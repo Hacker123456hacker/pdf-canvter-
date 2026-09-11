@@ -4,3 +4,4 @@ google-auth-httplib2>=0.2.0
 Pillow>=11.0.0
 python-dotenv>=1.1.0
 requests>=2.32.0
+edge-tts>=7.0.0
