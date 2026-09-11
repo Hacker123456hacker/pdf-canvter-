@@ -1,0 +1,23 @@
+{
+  "channel": {
+    "title_prefix": "",
+    "description": "AI-generated educational video. Verify facts before relying on them.",
+    "privacy_status": "private",
+    "category_id": "27",
+    "language": "hi"
+  },
+  "content": {
+    "language": "hi",
+    "niche": "technology, AI, internet and useful knowledge",
+    "duration_seconds": 60,
+    "topic_seed": "",
+    "avoid_topics": []
+  },
+  "video": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "voice": "hi-IN-SwaraNeural",
+    "tts_rate": "+0%"
+  }
+}
