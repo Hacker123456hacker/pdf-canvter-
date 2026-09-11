@@ -1,0 +1,9 @@
+.env
+*.json
+!config.example.json
+token.json
+client_secret*.json
+output/
+work/
+__pycache__/
+*.pyc
