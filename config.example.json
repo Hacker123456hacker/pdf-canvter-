@@ -13,6 +13,11 @@
     "topic_seed": "",
     "avoid_topics": []
   },
+  "visuals": {
+    "enabled": true,
+    "provider": "google",
+    "images_per_video": 8
+  },
   "video": {
     "width": 1080,
     "height": 1920,
