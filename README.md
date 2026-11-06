@@ -73,4 +73,4 @@ Add your Gemini keys in **GitHub → Settings → Secrets and variables → Acti
 
 At least one key is required. The workflow rotates through the configured keys and the configured Gemini models when it encounters quota, authentication, overload, or network errors. Keep all keys private; never commit them to the repository.
 
-The default target is now **10 minutes**. Change `content.duration_seconds` in `config.example.json` to adjust it (for example, `480` = 8 minutes, `600` = 10 minutes, `720` = 12 minutes). Actual duration depends on the generated narration and Hindi speaking rate.
+The default target is now a **30–60 second YouTube Short** (about 50–55 seconds). The workflow asks for 6–8 topic-specific real-photo scenes and downloads Wikimedia Commons images when no Google image-search credentials are configured. Actual duration depends on the generated narration and Hindi speaking rate.
