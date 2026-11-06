@@ -9,14 +9,14 @@
   "content": {
     "language": "hi",
     "niche": "technology, AI, internet and useful knowledge",
-    "duration_seconds": 600,
+    "duration_seconds": 60,
     "topic_seed": "",
     "avoid_topics": []
   },
   "visuals": {
     "enabled": true,
     "provider": "wikimedia",
-    "images_per_video": 20
+    "images_per_video": 8
   },
   "video": {
     "width": 1080,
