@@ -316,18 +316,53 @@ def vtt_to_srt(vtt_path, srt_path):
     return bool(rows)
 
 
+def media_duration(path):
+    probe=subprocess.run(
+        ["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(path)],
+        capture_output=True,text=True
+    )
+    if probe.returncode != 0:
+        raise RuntimeError("Could not inspect generated media: "+probe.stderr[-1000:])
+    return float(probe.stdout.strip())
+
+
 def tts(text,c):
     audio=WORK/"voice.mp3"; captions=WORK/"voice.vtt"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
-    cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
-         "--write-media",str(audio),"--write-subtitles",str(captions)]
-    r=subprocess.run(cmd,capture_output=True,text=True)
-    if r.returncode:
-        raise RuntimeError("Hindi TTS failed: "+(r.stderr or r.stdout)[-1500:])
-    srt=WORK/"captions.srt"
-    if captions.exists():
-        vtt_to_srt(captions,srt)
-    return audio
+    # A successful CLI exit is not enough: Edge TTS can occasionally leave a tiny,
+    # truncated MP3 behind. Never allow that to become a 0.2-second Shorts artifact.
+    words=len(text.split())
+    for attempt in range(1,4):
+        audio.unlink(missing_ok=True); captions.unlink(missing_ok=True)
+        cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
+             "--write-media",str(audio),"--write-subtitles",str(captions)]
+        r=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
+        if r.returncode:
+            reason=(r.stderr or r.stdout)[-1500:]
+            print(f"Hindi TTS attempt {attempt}/3 failed: {reason}")
+        elif audio.exists() and audio.stat().st_size > 10_000:
+            try:
+                seconds=media_duration(audio)
+            except Exception as exc:
+                seconds=0
+                print(f"Hindi TTS output probe failed: {exc}")
+            print(f"Hindi TTS audio duration: {seconds:.2f}s for {words} words")
+            if 25 <= seconds <= 65:
+                srt=WORK/"captions.srt"
+                if captions.exists() and vtt_to_srt(captions,srt):
+                    return audio
+                if captions.exists():
+                    captions.unlink(missing_ok=True)
+                # Captions are optional; a complete voice track is not.
+                return audio
+            reason=f"audio duration {seconds:.2f}s is outside the valid 25-65s Shorts range"
+            print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
+        else:
+            reason="audio file missing or suspiciously small"
+            print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
+        if attempt < 3:
+            time.sleep(3 * attempt)
+    raise RuntimeError("Hindi TTS did not produce a valid 25-65 second narration after 3 attempts. "+str(reason))
 
 
 def render(slides,audio,c):
