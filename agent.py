@@ -33,7 +33,7 @@ def cfg():
 def gemini(prompt):
     key = env("GEMINI_API_KEY")
     if not key: raise RuntimeError("GEMINI_API_KEY is missing")
-    model = env("GEMINI_MODEL", "gemini-2.5-flash")
+    model = env("GEMINI_MODEL", "gemini-3.8-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     r = requests.post(url, json={"contents":[{"parts":[{"text":prompt}]}]}, timeout=90)
     r.raise_for_status()
