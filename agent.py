@@ -117,7 +117,7 @@ Write roughly 100-125 words in natural, conversational spoken {lang}; do not mak
 Start with a strong 2-second hook, explain one useful idea with a concrete example, and finish with a memorable takeaway.
 Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
 slides must contain 6-8 short scene captions in the exact order of the narration.
-visual_queries must contain exactly the same number of specific English image-search queries, one per scene.
+visual_queries must contain exactly the same number of concise English image-search queries, one per scene, each only 2-5 concrete search terms.
 Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
     data = parse_gemini_json(gemini(prompt))
