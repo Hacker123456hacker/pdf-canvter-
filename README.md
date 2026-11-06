@@ -15,6 +15,7 @@
 इस project में **वीडियो बनाने वाली कोई अलग API key नहीं लगती** और न ही किसी paid AI video-generation service (जैसे text-to-video API) की जरूरत है.
 
 - **केवल Gemini Text API key (`GEMINI_API_KEY`)** topic, title, narration/script और slide text बनाने के लिए जरूरी है.
+- Default text model अब `gemini-3.8-flash` है; पुराने `gemini-2.5-flash` पर निर्भर नहीं है. चाहो तो `GEMINI_MODEL` environment variable से model बदल सकते हो.
 - Hindi voice **Edge TTS** से बनती है.
 - Images Wikimedia Commons से बिना API key के खोजी जाती हैं (Google Custom Search वैकल्पिक है).
 - Images + text slides + voice को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
