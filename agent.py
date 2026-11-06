@@ -171,22 +171,45 @@ def search_google_images(query, limit=8):
 
 
 def search_wikimedia(query, limit=8):
-    """Keyless fallback using Wikimedia Commons search and thumbnail URLs."""
+    """Keyless Wikimedia Commons search, restricted to actual photo files."""
     params={
-        "action":"query","generator":"search","gsrsearch":query,"gsrnamespace":"6","gsrlimit":limit,
-        "prop":"imageinfo","iiprop":"url|extmetadata","iiurlwidth":"1200","format":"json","formatversion":"2"
+        "action":"query","generator":"search",
+        "gsrsearch":f"filetype:bitmap {query}","gsrnamespace":"6","gsrlimit":limit,
+        "prop":"imageinfo","iiprop":"url|mime|extmetadata","iiurlwidth":"1200",
+        "format":"json","formatversion":"2"
     }
-    r=requests.get("https://commons.wikimedia.org/w/api.php",params=params,headers={"User-Agent":"AIYouTubeAgent/1.0"},timeout=30)
-    r.raise_for_status()
+    headers={"User-Agent":"AIYouTubeAgent/1.1"}
+    response=None
+    for attempt in range(3):
+        response=requests.get("https://commons.wikimedia.org/w/api.php",params=params,headers=headers,timeout=30)
+        if response.status_code != 429:
+            response.raise_for_status()
+            break
+        wait=2 ** (attempt+1)
+        print(f"Wikimedia rate limit; retrying in {wait}s")
+        time.sleep(wait)
+    response.raise_for_status()
     out=[]
-    for page in r.json().get("query",{}).get("pages",[]):
+    blocked=("logo","icon","coat of arms","screenshot","diagram","chart","map","flag",
+             "symbol","presentation","slides","report","kit","record","paper","research")
+    for page in response.json().get("query",{}).get("pages",[]):
         info=(page.get("imageinfo") or [{}])[0]
+        title=page.get("title","").replace("File:","")
+        # PDF/PPT files can expose JPEG page previews; never treat those as photos.
+        if Path(title).suffix.lower() not in (".jpg",".jpeg",".webp"):
+            continue
+        if any(term in title.lower() for term in blocked):
+            continue
+        if info.get("mime") not in ("image/jpeg","image/webp"):
+            continue
         url=info.get("thumburl") or info.get("url")
         if not url: continue
         meta=info.get("extmetadata",{})
         artist=(meta.get("Artist") or {}).get("value","")
         license_name=(meta.get("LicenseShortName") or {}).get("value","")
-        out.append({"url":url,"source":"Wikimedia Commons","title":page.get("title",query).replace("File:",""),"page":"https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_"),"artist":artist,"license":license_name})
+        out.append({"url":url,"source":"Wikimedia Commons","title":title,
+                    "page":"https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_"),
+                    "artist":artist,"license":license_name})
     return out
 
 
