@@ -34,7 +34,7 @@ def gemini(prompt):
     key = env("GEMINI_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY is missing")
-    model = env("GEMINI_MODEL", "gemini-3.8-flash")
+    model = env("GEMINI_MODEL", "gemini-2.5-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     last_error = None
