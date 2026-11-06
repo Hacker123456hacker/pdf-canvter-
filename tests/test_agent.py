@@ -1,6 +1,7 @@
 import unittest
 
-from agent import parse_gemini_json
+from pathlib import Path
+from tempfile import TemporaryDirectory\n\nfrom agent import parse_gemini_json, vtt_to_srt
 
 
 class GeminiResponseTests(unittest.TestCase):
