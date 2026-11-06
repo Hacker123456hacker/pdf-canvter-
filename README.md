@@ -10,9 +10,17 @@
 - GitHub Actions generated MP4 को artifact के रूप में 7 दिन रखता है
 - Manual run के लिए `workflow_dispatch` भी है
 
-## जरूरी बात
-**API keys/token को repo में कभी commit न करें.** GitHub Actions में:
-- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
+## API key के बारे में साफ जानकारी
+
+इस project में **वीडियो बनाने वाली कोई अलग API key नहीं लगती** और न ही किसी paid AI video-generation service (जैसे text-to-video API) की जरूरत है.
+
+- **केवल Gemini Text API key (`GEMINI_API_KEY`)** topic, title, narration/script और slide text बनाने के लिए जरूरी है.
+- Hindi voice **Edge TTS** से बनती है.
+- Images Wikimedia Commons से बिना API key के खोजी जाती हैं (Google Custom Search वैकल्पिक है).
+- Images + text slides + voice को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
+- यह वास्तविक AI-generated moving presenter या lip-sync video नहीं है; अभी presenter एक animated-style graphic है और मुख्य visuals slides/images हैं.
+
+**API keys/token को repo में कभी commit न करें.** GitHub Actions में:- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
 - `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
 - `GOOGLE_CSE_API_KEY` और `GOOGLE_CSE_ID` वैकल्पिक हैं; इनके बिना Wikimedia Commons से visuals खोजे जाएँगे.
 
