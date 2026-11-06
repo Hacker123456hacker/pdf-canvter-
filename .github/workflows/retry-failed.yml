@@ -1,0 +1,31 @@
+name: Retry Failed AI YouTube Run
+
+on:
+  workflow_run:
+    workflows: ["AI YouTube Auto Publisher"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  retry-failed-run:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 5 &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Retry failed jobs (up to 5 total attempts)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "Attempt ${ATTEMPT} failed. Automatically retrying failed jobs..."
+          sleep 20
+          gh run rerun "$RUN_ID" --failed --repo "$REPOSITORY"
+          echo "Retry requested. Maximum total attempts: 5."
