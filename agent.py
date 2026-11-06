@@ -405,7 +405,7 @@ def render(slides,audio,c):
     listfile=WORK/"video_segments.txt"
     with listfile.open("w",encoding="utf-8") as f:
         for segment in segments:
-            f.write(f"file '{segment.as_posix()}'\\n")
+            f.write("file '" + segment.as_posix() + "'\\n")
     vf="null"
     srt=WORK/"captions.srt"
     if srt.exists() and srt.stat().st_size:
