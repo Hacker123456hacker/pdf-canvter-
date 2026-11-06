@@ -322,7 +322,7 @@ def render(slides,audio,c):
         for p in slides: f.write(f"file '{p.as_posix()}'\nduration {duration}\n")
         f.write(f"file '{slides[-1].as_posix()}'\n")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
-    vf=f"scale={w}:{h},zoompan=z='1+0.07*mod(on\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+    vf=rf"scale={w}:{h},zoompan=z='1+0.07*mod(on\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
     srt=WORK/"captions.srt"
     if srt.exists() and srt.stat().st_size:
         subtitle_path=str(srt.resolve()).replace("\\","/").replace(":","\\:")
