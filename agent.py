@@ -274,7 +274,7 @@ def vtt_to_srt(vtt_path, srt_path):
     """Convert Edge TTS WebVTT captions to SRT for FFmpeg/libass."""
     import re
     raw=Path(vtt_path).read_text(encoding="utf-8")
-    cues=re.findall(r"(?m)^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})[^\\n]*\\n(.*?)(?=\\n\\s*\\n|\\Z)",raw,re.S)
+    cues=re.findall(r"(?m)^(\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}\.\d{3})[^\n]*\n(.*?)(?=\n\s*\n|\Z)",raw,re.S)
     def stamp(value):
         return value.replace(".",",")
     rows=[]
@@ -283,7 +283,7 @@ def vtt_to_srt(vtt_path, srt_path):
         caption=" ".join(line.strip() for line in caption.splitlines() if line.strip())
         if caption:
             rows.extend([str(n),f"{stamp(begin)} --> {stamp(finish)}",caption,""])
-    Path(srt_path).write_text("\\n".join(rows),encoding="utf-8")
+    Path(srt_path).write_text("\n".join(rows),encoding="utf-8")
     return bool(rows)
 
 
@@ -313,13 +313,13 @@ def render(slides,audio,c):
     audio_duration=float(probe.stdout.strip())
     duration=max(1.0,(audio_duration+0.5)/len(slides))
     with listfile.open("w",encoding="utf-8") as f:
-        for p in slides: f.write(f"file '{p.as_posix()}'\\nduration {duration}\\n")
-        f.write(f"file '{slides[-1].as_posix()}'\\n")
+        for p in slides: f.write(f"file '{p.as_posix()}'\nduration {duration}\n")
+        f.write(f"file '{slides[-1].as_posix()}'\n")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
-    vf=f"scale={w}:{h},zoompan=z='1+0.07*mod(on\\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+    vf=f"scale={w}:{h},zoompan=z='1+0.07*mod(on\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
     srt=WORK/"captions.srt"
     if srt.exists() and srt.stat().st_size:
-        subtitle_path=str(srt.resolve()).replace("\\\\","/").replace(":","\\\\:")
+        subtitle_path=str(srt.resolve()).replace("\\","/").replace(":","\\:")
         vf+=f",subtitles='{subtitle_path}':force_style='FontName=Noto Sans Devanagari,FontSize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=180'"
     cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
          "-vf",vf,"-r",str(fps),"-c:v","libx264","-preset","veryfast","-crf","21",
