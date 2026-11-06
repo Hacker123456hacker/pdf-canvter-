@@ -32,12 +32,40 @@ def cfg():
 
 def gemini(prompt):
     key = env("GEMINI_API_KEY")
-    if not key: raise RuntimeError("GEMINI_API_KEY is missing")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY is missing")
     model = env("GEMINI_MODEL", "gemini-3.8-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-    r = requests.post(url, json={"contents":[{"parts":[{"text":prompt}]}]}, timeout=90)
-    r.raise_for_status()
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    last_error = None
+
+    # Gemini can occasionally respond slowly. Retry transient network/server errors
+    # with a longer read timeout instead of failing the entire video job immediately.
+    for attempt in range(1, 5):
+        try:
+            response = requests.post(url, json=payload, timeout=(20, 180))
+            if response.status_code in (408, 429, 500, 502, 503, 504):
+                response.raise_for_status()
+            response.raise_for_status()
+            body = response.json()
+            candidates = body.get("candidates") or []
+            if not candidates:
+                feedback = body.get("promptFeedback", {})
+                raise RuntimeError(f"Gemini returned no candidate: {feedback or body}")
+            return candidates[0]["content"]["parts"][0]["text"]
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_error = exc
+        except requests.HTTPError as exc:
+            last_error = exc
+            status = exc.response.status_code if exc.response is not None else None
+            if status not in (408, 429, 500, 502, 503, 504):
+                raise
+        if attempt < 4:
+            delay = min(15 * (2 ** (attempt - 1)), 60)
+            print(f"Gemini temporary error (attempt {attempt}/4): {last_error}. Retrying in {delay}s...")
+            time.sleep(delay)
+
+    raise RuntimeError(f"Gemini API failed after 4 attempts: {last_error}") from last_error
 
 
 def parse_gemini_json(raw):
