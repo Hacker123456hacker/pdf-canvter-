@@ -188,7 +188,7 @@ def download_visual(item, index):
 def fetch_visuals(data, c):
     visual_cfg=c.get("visuals",{})
     if not visual_cfg.get("enabled",True): return [], []
-    provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","google")).lower()
+    provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","wikimedia")).lower()
     max_per= int(visual_cfg.get("images_per_video",8))
     items=[]
     queries=data.get("visual_queries",[])
