@@ -15,8 +15,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg and Hindi fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core
+          ffmpeg -version
+          ffprobe -version
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,16 +34,49 @@ jobs:
           GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
-          test -n "$GEMINI_API_KEY" || (echo 'Missing GEMINI_API_KEY secret' && exit 1)
-          printf '%s' "$YOUTUBE_TOKEN_B64" | base64 -d > token.json
+          set -euo pipefail
+          if [ -z "${GEMINI_API_KEY:-}" ]; then
+            echo "::error::Missing repository secret GEMINI_API_KEY. Add it in Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+          export YOUTUBE_UPLOAD=false
+          if [ -n "${YOUTUBE_TOKEN_B64:-}" ]; then
+            if ! printf '%s' "$YOUTUBE_TOKEN_B64" | base64 --decode > token.json; then
+              echo "::error::YOUTUBE_TOKEN_B64 is not valid base64. Re-create it from token.json."
+              exit 1
+            fi
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          token = json.loads(Path("token.json").read_text(encoding="utf-8"))
+          if not token.get("refresh_token"):
+              raise SystemExit("OAuth token has no refresh_token. Re-run oauth_setup.py with consent and update YOUTUBE_TOKEN_B64.")
+          if not token.get("client_id") or not token.get("client_secret"):
+              raise SystemExit("OAuth token is missing client credentials. Re-run oauth_setup.py.")
+          PY
+            export YOUTUBE_UPLOAD=true
+            echo "YouTube OAuth token validated; upload enabled."
+          else
+            echo "::warning::YOUTUBE_TOKEN_B64 is not set. Video generation will run and save an artifact, but YouTube upload will be skipped."
+          fi
+
           python - <<'PY'
           import os
-          with open('.env','w') as f:
-              f.write('GEMINI_API_KEY='+os.environ['GEMINI_API_KEY']+'\n')
-              f.write('GOOGLE_CSE_API_KEY='+os.environ.get('GOOGLE_CSE_API_KEY','')+'\n')
-              f.write('GOOGLE_CSE_ID='+os.environ.get('GOOGLE_CSE_ID','')+'\n')
-              f.write('YOUTUBE_UPLOAD=true\n')
+          from pathlib import Path
+          values = {
+              "GEMINI_API_KEY": os.environ["GEMINI_API_KEY"],
+              "GOOGLE_CSE_API_KEY": os.environ.get("GOOGLE_CSE_API_KEY", ""),
+              "GOOGLE_CSE_ID": os.environ.get("GOOGLE_CSE_ID", ""),
+              "YOUTUBE_UPLOAD": os.environ.get("YOUTUBE_UPLOAD", "false"),
+          }
+          Path(".env").write_text(
+              "".join(f"{key}={value}\n" for key, value in values.items()),
+              encoding="utf-8"
+          )
           PY
+      - name: Validate Python source
+        run: python -m compileall -q agent.py oauth_setup.py
       - name: Generate and upload
         run: python agent.py
       - name: Save generated video as artifact
