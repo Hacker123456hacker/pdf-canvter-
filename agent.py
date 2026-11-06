@@ -31,46 +31,55 @@ def cfg():
 
 
 def gemini(prompt):
-    key = env("GEMINI_API_KEY")
-    if not key:
-        raise RuntimeError("GEMINI_API_KEY is missing")
+    keys = list(dict.fromkeys(
+        value for value in (
+            env("GEMINI_API_KEY"), env("GEMINI_API_KEY_2"), env("GEMINI_API_KEY_3")
+        ) if value
+    ))
+    if not keys:
+        raise RuntimeError("Add GEMINI_API_KEY (and optionally GEMINI_API_KEY_2 / GEMINI_API_KEY_3) to GitHub Secrets.")
     primary = env("GEMINI_MODEL", "gemini-2.5-flash")
     fallbacks = [x.strip() for x in env("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite").split(",") if x.strip()]
     models = list(dict.fromkeys([primary] + fallbacks))
     last_error = None
 
-    # Try a lightweight fallback model when the primary Gemini endpoint is overloaded.
-    for model in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        for attempt in range(1, 3):
-            try:
-                response = requests.post(
-                    url,
-                    json={"contents": [{"parts": [{"text": prompt}]}]},
-                    timeout=(20, 180),
-                )
-                response.raise_for_status()
-                body = response.json()
-                candidates = body.get("candidates") or []
-                if not candidates:
-                    feedback = body.get("promptFeedback", {})
-                    raise RuntimeError(f"Gemini {model} returned no candidate: {feedback or body}")
-                print(f"Gemini model used: {model}")
-                return candidates[0]["content"]["parts"][0]["text"]
-            except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
-                last_error = exc
-                status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
-                if isinstance(exc, requests.HTTPError) and status not in (408, 429, 500, 502, 503, 504):
-                    raise
-                if attempt == 1:
-                    print(f"Gemini {model} temporary error (attempt 1/2): {exc}. Retrying in 12s...")
-                    time.sleep(12)
-            except RuntimeError as exc:
-                last_error = exc
-                break
+    # Rotate through every configured key and model on quota, overload, auth, or network errors.
+    for key_index, key in enumerate(keys, 1):
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            for attempt in range(1, 3):
+                try:
+                    response = requests.post(
+                        url,
+                        json={"contents": [{"parts": [{"text": prompt}]}]},
+                        timeout=(20, 180),
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    candidates = body.get("candidates") or []
+                    if not candidates:
+                        feedback = body.get("promptFeedback", {})
+                        raise RuntimeError(f"Gemini {model} returned no candidate: {feedback or body}")
+                    print(f"Gemini key slot {key_index}, model used: {model}")
+                    return candidates[0]["content"]["parts"][0]["text"]
+                except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+                    last_error = exc
+                    status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
+                    if isinstance(exc, requests.HTTPError) and status not in (400, 401, 403, 404, 408, 429, 500, 502, 503, 504):
+                        raise
+                    # A quota/auth/model error should immediately try the next option.
+                    if status in (400, 401, 403, 404, 429):
+                        print(f"Gemini key slot {key_index}, model {model} returned HTTP {status}; switching fallback.")
+                        break
+                    if attempt == 1:
+                        print(f"Gemini key slot {key_index}, model {model} temporary error (attempt 1/2): {exc}. Retrying in 8s...")
+                        time.sleep(8)
+                except RuntimeError as exc:
+                    last_error = exc
+                    break
 
     raise RuntimeError(
-        "Gemini generation failed on all configured models "
+        f"Gemini generation failed with {len(keys)} configured key(s) and models "
         f"({', '.join(models)}). Last error: {last_error}"
     ) from last_error
 
@@ -99,14 +108,18 @@ def make_content(c):
     lang=c["content"].get("language","hi"); niche=c["content"].get("niche","technology")
     seed=c["content"].get("topic_seed","")
     avoid=", ".join(c["content"].get("avoid_topics",[])) or "none"
-    prompt=f'''Create ONE original short-form YouTube video in {lang} for the niche: {niche}.
+    target_seconds=max(180,int(c["content"].get("duration_seconds",600)))
+    target_minutes=round(target_seconds/60)
+    prompt=f'''Create ONE original long-form YouTube video in {lang} for the niche: {niche}.
 No daily topic will be supplied, so choose a useful, factual, evergreen topic yourself.
 Topic hint (optional): {seed or "none"}. Avoid: {avoid}.
-Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
-Narration should be about 45-70 seconds, natural spoken {lang}, no markdown, no citations.
-slides must be 6-8 short strings, each suitable for a vertical video card.
-visual_queries must be 6-8 short image-search queries in English, one for each slide, describing the
-main real-world object/person/place/concept to show. Prefer generic factual visuals over logos.
+Target narration length: approximately {target_minutes} minutes ({target_seconds} seconds).
+Write a detailed, engaging, natural spoken-language script of roughly {target_minutes*125} to {target_minutes*145} words.
+Include a strong opening hook, clear explanations, practical examples, smooth transitions, and a concise conclusion.
+Do not pad or repeat ideas just to increase duration. Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
+slides must contain 18-24 concise scene captions that follow the narration in order.
+visual_queries must contain the same number of short image-search queries in English, one per scene, describing
+the main real-world object/person/place/concept to show. Prefer generic factual visuals over logos.
 Do not make medical/legal/financial claims or sensational misinformation.'''
     data = parse_gemini_json(gemini(prompt))
     data["visual_queries"] = [str(x) for x in data.get("visual_queries", []) if str(x).strip()]
