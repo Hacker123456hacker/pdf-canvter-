@@ -11,7 +11,12 @@
 - Manual run के लिए `workflow_dispatch` भी है
 
 ## जरूरी बात
-**API keys/token को repo में कभी commit न करें.** GitHub Actions में `GEMINI_API_KEY` और `YOUTUBE_TOKEN_B64` secrets रखें.
+**API keys/token को repo में कभी commit न करें.** GitHub Actions में:
+- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
+- `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
+- `GOOGLE_CSE_API_KEY` और `GOOGLE_CSE_ID` वैकल्पिक हैं; इनके बिना Wikimedia Commons से visuals खोजे जाएँगे.
+
+Workflow अब Python syntax और Gemini JSON parser के unit tests भी चलाता है. YouTube OAuth token में refresh token होना चाहिए; उसे बनाने के लिए `oauth_setup.py` को consent के साथ चलाएँ.
 
 ## GitHub setup
 1. Google Cloud Console में YouTube Data API v3 enable करें और OAuth Desktop App credentials डाउनलोड करके local machine/Termux में `client_secret.json` रखें.
