@@ -382,30 +382,48 @@ def tts(text,c):
 
 def render(slides,audio,c):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
-    listfile=WORK/"slides.txt"
-    probe=subprocess.run(
-        ["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(audio)],
-        capture_output=True,text=True
-    )
-    if probe.returncode != 0:
-        raise RuntimeError("Could not determine narration duration: "+probe.stderr[-1000:])
-    audio_duration=float(probe.stdout.strip())
-    duration=max(1.0,(audio_duration+0.5)/len(slides))
-    with listfile.open("w",encoding="utf-8") as f:
-        for p in slides: f.write(f"file '{p.as_posix()}'\nduration {duration}\n")
-        f.write(f"file '{slides[-1].as_posix()}'\n")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
-    vf=rf"scale={w}:{h},zoompan=z='1+0.07*mod(on\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+    audio_duration=media_duration(audio)
+    if not 25 <= audio_duration <= 65:
+        raise RuntimeError(f"Refusing invalid narration duration: {audio_duration:.2f}s")
+    duration=audio_duration/len(slides)
+    # The previous concat-of-PNGs pipeline emitted only one frame per still image.
+    # Render each still as a real timed video segment, then concatenate video segments.
+    segments=[]
+    for i,slide in enumerate(slides):
+        segment=WORK/f"segment_{i:02d}.mp4"
+        zoom=rf"scale={w}:{h},zoompan=z='min(zoom+0.0005\\,1.07)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+        cmd=["ffmpeg","-y","-loop","1","-framerate",str(fps),"-i",str(slide),
+             "-t",f"{duration:.4f}","-vf",zoom,"-an","-c:v","libx264",
+             "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
+             "-movflags","+faststart",str(segment)]
+        result=subprocess.run(cmd,capture_output=True,text=True)
+        if result.returncode:
+            raise RuntimeError(f"Could not render scene {i+1}: "+result.stderr[-2500:])
+        segments.append(segment)
+    listfile=WORK/"video_segments.txt"
+    with listfile.open("w",encoding="utf-8") as f:
+        for segment in segments:
+            f.write(f"file '{segment.as_posix()}'\\n")
+    vf="null"
     srt=WORK/"captions.srt"
     if srt.exists() and srt.stat().st_size:
-        subtitle_path=str(srt.resolve()).replace("\\","/").replace(":","\\:")
+        subtitle_path=str(srt.resolve()).replace("\\\\","/").replace(":","\\\\:")
         vf+=f",subtitles='{subtitle_path}':force_style='FontName=Noto Sans Devanagari,FontSize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=180'"
     cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
-         "-vf",vf,"-r",str(fps),"-c:v","libx264","-preset","veryfast","-crf","21",
-         "-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",str(out)]
-    r=subprocess.run(cmd,capture_output=True,text=True)
-    if r.returncode: raise RuntimeError(r.stderr[-3500:])
+         "-map","0:v:0","-map","1:a:0","-vf",vf,"-r",str(fps),"-c:v","libx264",
+         "-preset","veryfast","-crf","21","-c:a","aac","-b:a","128k",
+         "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
+    result=subprocess.run(cmd,capture_output=True,text=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr[-3500:])
+    final_duration=media_duration(out)
+    print(f"Final video duration: {final_duration:.2f}s")
+    if not 25 <= final_duration <= 65:
+        out.unlink(missing_ok=True)
+        raise RuntimeError(f"Rendered video duration is invalid: {final_duration:.2f}s; artifact rejected")
     return out
+
 def youtube_upload(video,data,c):
     token_path=Path(env("YOUTUBE_TOKEN_FILE",str(ROOT/"token.json")))
     if not token_path.exists(): raise RuntimeError("YouTube OAuth token.json missing. Run oauth_setup.py locally first.")
