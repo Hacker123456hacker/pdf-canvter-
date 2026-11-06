@@ -121,6 +121,21 @@ visual_queries must contain exactly the same number of concise English image-sea
 Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
     data = parse_gemini_json(gemini(prompt))
+    # Gemini sometimes ignores the requested word count. Cap narration so Hindi
+    # speech reliably fits the requested 30-60 second Shorts format.
+    narration=data["narration"].strip()
+    if len(narration.split()) > 120:
+        sentences=re.split(r"(?<=[।!?])\\s+", narration)
+        kept=[]; count=0
+        for sentence in sentences:
+            n=len(sentence.split())
+            if count+n > 120:
+                break
+            kept.append(sentence); count+=n
+        if not kept:
+            kept=[" ".join(narration.split()[:118])+"।"]
+        data["narration"]=" ".join(kept).strip()
+        print(f"Shortened Gemini narration from {len(narration.split())} to {len(data['narration'].split())} words")
     data["visual_queries"] = [str(x) for x in data.get("visual_queries", []) if str(x).strip()]
     if not data.get("visual_queries"):
         data["visual_queries"] = [data["title"]] * len(data["slides"])
