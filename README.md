@@ -61,3 +61,16 @@ cp output/*.mp4 ~/storage/downloads/AIYouTube/
 
 ## Safety
 यह system generic educational content के लिए बनाया गया है. Publish करने से पहले facts/rights/YouTube policies की जाँच करें. Copyrighted music, clips या images बिना अधिकार के न जोड़ें.
+
+
+## Gemini API key backup and long-form video duration
+
+Add your Gemini keys in **GitHub → Settings → Secrets and variables → Actions**:
+
+- `GEMINI_API_KEY` — primary key
+- `GEMINI_API_KEY_2` — backup key
+- `GEMINI_API_KEY_3` — second backup key
+
+At least one key is required. The workflow rotates through the configured keys and the configured Gemini models when it encounters quota, authentication, overload, or network errors. Keep all keys private; never commit them to the repository.
+
+The default target is now **10 minutes**. Change `content.duration_seconds` in `config.example.json` to adjust it (for example, `480` = 8 minutes, `600` = 10 minutes, `720` = 12 minutes). Actual duration depends on the generated narration and Hindi speaking rate.
