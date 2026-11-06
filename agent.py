@@ -108,18 +108,17 @@ def make_content(c):
     lang=c["content"].get("language","hi"); niche=c["content"].get("niche","technology")
     seed=c["content"].get("topic_seed","")
     avoid=", ".join(c["content"].get("avoid_topics",[])) or "none"
-    target_seconds=max(180,int(c["content"].get("duration_seconds",600)))
-    target_minutes=round(target_seconds/60)
-    prompt=f'''Create ONE original long-form YouTube video in {lang} for the niche: {niche}.
+    target_seconds=max(30,min(60,int(c["content"].get("duration_seconds",60))))
+    prompt=f'''Create ONE original short-form YouTube video in {lang} for the niche: {niche}.
 No daily topic will be supplied, so choose a useful, factual, evergreen topic yourself.
 Topic hint (optional): {seed or "none"}. Avoid: {avoid}.
-Target narration length: approximately {target_minutes} minutes ({target_seconds} seconds).
-Write a detailed, engaging, natural spoken-language script of roughly {target_minutes*125} to {target_minutes*145} words.
-Include a strong opening hook, clear explanations, practical examples, smooth transitions, and a concise conclusion.
-Do not pad or repeat ideas just to increase duration. Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
-slides must contain 18-24 concise scene captions that follow the narration in order.
-visual_queries must contain the same number of short image-search queries in English, one per scene, describing
-the main real-world object/person/place/concept to show. Prefer generic factual visuals over logos.
+Target narration length: 30-60 seconds, ideally about 50-55 seconds.
+Write roughly 100-125 words in natural, conversational spoken {lang}; do not make it too brief.
+Start with a strong 2-second hook, explain one useful idea with a concrete example, and finish with a memorable takeaway.
+Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
+slides must contain 6-8 short scene captions in the exact order of the narration.
+visual_queries must contain exactly the same number of specific English image-search queries, one per scene.
+Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
     data = parse_gemini_json(gemini(prompt))
     data["visual_queries"] = [str(x) for x in data.get("visual_queries", []) if str(x).strip()]
@@ -216,18 +215,29 @@ def fetch_visuals(data, c):
         try:
             found=[]
             if provider in ("google","auto"):
-                found=search_google_images(q,limit=3)
+                found=search_google_images(q,limit=4)
             if not found:
-                found=search_wikimedia(q,limit=3)
+                found=search_wikimedia(q,limit=5)
+            # Retry Commons with a simpler query if the detailed search returns no usable photo.
+            downloaded=False
             for item in found:
                 p=download_visual(item,len(items))
                 if p:
-                    item["path"]=str(p); items.append(item); break
+                    item["path"]=str(p); items.append(item); downloaded=True; break
+            if not downloaded and provider in ("wikimedia","auto","google"):
+                simple=" ".join(str(q).split()[:4])
+                if simple and simple.lower()!=str(q).lower():
+                    for item in search_wikimedia(simple,limit=5):
+                        p=download_visual(item,len(items))
+                        if p:
+                            item["path"]=str(p); items.append(item); break
         except Exception as e:
             print(f"Visual search failed for '{q}': {e}")
         time.sleep(0.2)
     (OUT/"visual_credits.json").write_text(json.dumps(items,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(f"Visuals: {len(items)} downloaded")
+    print(f"Visuals downloaded: {len(items)} / requested {min(len(queries), max_per)}")
+    if not items:
+        print("WARNING: No real photos downloaded from image providers; generated video will use designed backgrounds.")
     return [Path(x["path"]) for x in items], items
 
 
