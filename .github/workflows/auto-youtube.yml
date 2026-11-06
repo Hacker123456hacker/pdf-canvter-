@@ -36,13 +36,15 @@ jobs:
       - name: Prepare secrets
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
           YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
           GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
           set -euo pipefail
-          if [ -z "${GEMINI_API_KEY:-}" ]; then
-            echo "::error::Missing repository secret GEMINI_API_KEY. Add it in Settings > Secrets and variables > Actions."
+          if [ -z "${GEMINI_API_KEY:-}${GEMINI_API_KEY_2:-}${GEMINI_API_KEY_3:-}" ]; then
+            echo "::error::Add at least one Gemini key as GEMINI_API_KEY, GEMINI_API_KEY_2, or GEMINI_API_KEY_3 in Settings > Secrets and variables > Actions."
             exit 1
           fi
 
@@ -71,7 +73,9 @@ jobs:
           import os
           from pathlib import Path
           values = {
-              "GEMINI_API_KEY": os.environ["GEMINI_API_KEY"],
+              "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
+              "GEMINI_API_KEY_2": os.environ.get("GEMINI_API_KEY_2", ""),
+              "GEMINI_API_KEY_3": os.environ.get("GEMINI_API_KEY_3", ""),
               "GOOGLE_CSE_API_KEY": os.environ.get("GOOGLE_CSE_API_KEY", ""),
               "GOOGLE_CSE_ID": os.environ.get("GOOGLE_CSE_ID", ""),
               "YOUTUBE_UPLOAD": os.environ.get("YOUTUBE_UPLOAD", "false"),
