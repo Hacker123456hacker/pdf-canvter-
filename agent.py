@@ -2,7 +2,7 @@
 """Free-first AI YouTube Shorts agent.
 Generates a Hindi script with Gemini, automatically finds topic-relevant visuals
 (Google Custom Search when configured, otherwise Wikimedia Commons), adds Hindi
-TTS, animated B-roll cards and a presenter, then optionally uploads to YouTube.
+TTS, animated B-roll cards and a presenter, adds topic-related real photos, animated camera movement and Hindi subtitles, then optionally uploads to YouTube.
 Secrets are read from environment variables / local files.
 """
 import json, os, re, subprocess, sys, time
@@ -212,32 +212,6 @@ def fetch_visuals(data, c):
     return [Path(x["path"]) for x in items], items
 
 
-def make_character_frame(w=1080, h=1920, talking=False, blink=False):
-    im = Image.new("RGBA", (w, h), (0,0,0,0)); d = ImageDraw.Draw(im)
-    cx, cy = w//2, int(h*0.68)
-    d.rounded_rectangle((cx-245, cy+205, cx+245, cy+620), radius=150, fill=(64,92,180,255))
-    d.rectangle((cx-70, cy+135, cx+70, cy+245), fill=(206,145,104,255))
-    d.ellipse((cx-245,cy-170,cx-185,cy-50), fill=(206,145,104,255)); d.ellipse((cx+185,cy-170,cx+245,cy-50), fill=(206,145,104,255))
-    d.ellipse((cx-200,cy-230,cx+200,cy+180), fill=(224,166,121,255), outline=(70,45,35,255), width=8)
-    d.pieslice((cx-205,cy-265,cx+205,cy-20),180,360,fill=(38,29,28,255))
-    d.ellipse((cx-175,cy-245,cx-80,cy-115), fill=(38,29,28,255)); d.ellipse((cx+80,cy-245,cx+175,cy-115), fill=(38,29,28,255))
-    if blink:
-        d.line((cx-110,cy-45,cx-45,cy-45), fill=(35,25,25,255), width=12); d.line((cx+45,cy-45,cx+110,cy-45), fill=(35,25,25,255), width=12)
-    else:
-        d.ellipse((cx-105,cy-65,cx-45,cy-5), fill=(255,255,255,255)); d.ellipse((cx+45,cy-65,cx+105,cy-5), fill=(255,255,255,255))
-        d.ellipse((cx-83,cy-48,cx-57,cy-22), fill=(25,25,25,255)); d.ellipse((cx+57,cy-48,cx+83,cy-22), fill=(25,25,25,255))
-    d.line((cx,cy-25,cx-12,cy+35,cx+18,cy+38), fill=(130,80,65,255), width=7)
-    if talking:
-        d.ellipse((cx-62,cy+70,cx+62,cy+145), fill=(55,22,28,255), outline=(85,40,35,255), width=5)
-        d.rounded_rectangle((cx-35,cy+76,cx+35,cy+98), radius=8, fill=(250,250,250,255))
-    else:
-        d.arc((cx-65,cy+55,cx+65,cy+135), 15, 165, fill=(75,35,35,255), width=9)
-    badge_font=font(30,True); label="AI PRESENTER"; bb=d.textbbox((0,0),label,font=badge_font)
-    d.rounded_rectangle((cx-120,cy+640,cx+120,cy+700),radius=25,fill=(20,25,40,235))
-    d.text((cx-(bb[2]-bb[0])//2,cy+650),label,font=badge_font,fill=(245,245,250,255))
-    return im
-
-
 def fit_cover(im, size):
     w,h=size; src=im.convert("RGB"); sw,sh=src.size
     scale=max(w/sw,h/sh); nw,nh=int(sw*scale),int(sh*scale)
@@ -247,74 +221,112 @@ def fit_cover(im, size):
 
 
 def make_slides(slides,c,visual_paths=None):
+    """Create photo-led vertical scenes; no cartoon/avatar overlay."""
     w,h=c["video"].get("width",1080),c["video"].get("height",1920)
     paths=[]; visual_paths=visual_paths or []
     for i,text in enumerate(slides):
         if visual_paths:
             try:
                 with Image.open(visual_paths[i % len(visual_paths)]) as src:
-                    bg=fit_cover(src,(w,h)).filter(ImageFilter.GaussianBlur(radius=1.2))
+                    bg=fit_cover(src,(w,h)).filter(ImageFilter.GaussianBlur(radius=0.6))
                 im=bg.convert("RGBA")
-                # dark readable overlay
-                overlay=Image.new("RGBA",(w,h),(8,12,24,130)); im=Image.alpha_composite(im,overlay)
+                overlay=Image.new("RGBA",(w,h),(5,9,20,112))
+                im=Image.alpha_composite(im,overlay)
             except Exception:
-                im=Image.new("RGBA",(w,h),(15,18,28,255))
+                im=Image.new("RGBA",(w,h),(12,18,32,255))
         else:
-            im=Image.new("RGBA",(w,h),(15,18,28,255))
+            im=Image.new("RGBA",(w,h),(12,18,32,255))
             d=ImageDraw.Draw(im)
-            for x in range(-h,w,h//3): d.ellipse((x,200,x+h,200+h),outline=(45,55,85),width=5)
+            for x in range(-h,w,h//3):
+                d.ellipse((x,220,x+h,220+h),outline=(42,62,95,255),width=5)
         d=ImageDraw.Draw(im)
-        title=font(70,True); small=font(32,False)
+        # Editorial top label and readable headline panel.
+        small=font(max(24,int(w*0.027)),False)
+        title=font(max(48,int(w*0.064)),True)
+        d.rounded_rectangle((48,70,w-48,142),radius=28,fill=(8,15,28,190),outline=(255,255,255,70),width=2)
+        d.text((78,87),"HINDI • EXPLAINED",font=small,fill=(225,235,250,255))
         words=text.split(); lines=[]; cur=""
         for word in words:
             test=(cur+" "+word).strip()
-            if d.textbbox((0,0),test,font=title)[2] < w-140: cur=test
+            if d.textbbox((0,0),test,font=title)[2] < w-150:
+                cur=test
             else:
                 if cur: lines.append(cur)
                 cur=word
         if cur: lines.append(cur)
-        y=180
-        for line in lines[:4]:
+        line_h=int(title.size*1.35)
+        block_h=min(len(lines[:5]),5)*line_h+70
+        y=int(h*0.31)
+        d.rounded_rectangle((42,y-38,w-42,y+block_h),radius=34,fill=(4,9,20,205),outline=(255,255,255,75),width=2)
+        for line in lines[:5]:
             box=d.textbbox((0,0),line,font=title); tw=box[2]-box[0]
-            d.rounded_rectangle(((w-tw)//2-25,y-12,(w+tw)//2+25,y+80),radius=20,fill=(5,8,18,175))
-            d.text(((w-tw)//2,y),line,font=title,fill=(250,250,255,255)); y+=95
-        character=make_character_frame(w,h,talking=(i%2==0),blink=(i%7==0))
-        im=Image.alpha_composite(im,character)
-        d=ImageDraw.Draw(im)
-        d.text((50,h-100),f"AI Short • {i+1}/{len(slides)}",font=small,fill=(235,240,250,235))
+            d.text(((w-tw)//2,y),line,font=title,fill=(255,255,255,255),stroke_width=1,stroke_fill=(0,0,0,180))
+            y+=line_h
+        # Minimal progress marker; FFmpeg adds subtle camera motion.
+        bar_y=h-105
+        d.rounded_rectangle((55,bar_y,w-55,bar_y+10),radius=5,fill=(255,255,255,85))
+        progress=int((w-110)*(i+1)/max(1,len(slides)))
+        d.rounded_rectangle((55,bar_y,55+progress,bar_y+10),radius=5,fill=(255,205,90,255))
+        d.text((55,h-78),f"{i+1:02d} / {len(slides):02d}",font=small,fill=(245,245,250,230))
         p=WORK/f"slide_{i:02d}.png"; im.convert("RGB").save(p,quality=94); paths.append(p)
     return paths
+def vtt_to_srt(vtt_path, srt_path):
+    """Convert Edge TTS WebVTT captions to SRT for FFmpeg/libass."""
+    import re
+    raw=Path(vtt_path).read_text(encoding="utf-8")
+    cues=re.findall(r"(?m)^(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+-->\\s+(\\d{2}:\\d{2}:\\d{2}\\.\\d{3})[^\\n]*\\n(.*?)(?=\\n\\s*\\n|\\Z)",raw,re.S)
+    def stamp(value):
+        return value.replace(".",",")
+    rows=[]
+    for n,(begin,finish,caption) in enumerate(cues,1):
+        caption=re.sub(r"<[^>]+>","",caption).strip()
+        caption=" ".join(line.strip() for line in caption.splitlines() if line.strip())
+        if caption:
+            rows.extend([str(n),f"{stamp(begin)} --> {stamp(finish)}",caption,""])
+    Path(srt_path).write_text("\\n".join(rows),encoding="utf-8")
+    return bool(rows)
 
 
 def tts(text,c):
-    audio=WORK/"voice.mp3"; voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
-    cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,"--write-media",str(audio)]
+    audio=WORK/"voice.mp3"; captions=WORK/"voice.vtt"
+    voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
+    cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
+         "--write-media",str(audio),"--write-subtitles",str(captions)]
     r=subprocess.run(cmd,capture_output=True,text=True)
-    if r.returncode: raise RuntimeError("TTS failed. Install edge-tts: pip install edge-tts")
+    if r.returncode:
+        raise RuntimeError("Hindi TTS failed: "+(r.stderr or r.stdout)[-1500:])
+    srt=WORK/"captions.srt"
+    if captions.exists():
+        vtt_to_srt(captions,srt)
     return audio
 
 
 def render(slides,audio,c):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
     listfile=WORK/"slides.txt"
-    probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
-        capture_output=True, text=True
+    probe=subprocess.run(
+        ["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(audio)],
+        capture_output=True,text=True
     )
     if probe.returncode != 0:
-        raise RuntimeError("Could not determine narration duration: " + probe.stderr[-1000:])
-    audio_duration = float(probe.stdout.strip())
-    duration = max(1.0, (audio_duration + 0.5) / len(slides))
+        raise RuntimeError("Could not determine narration duration: "+probe.stderr[-1000:])
+    audio_duration=float(probe.stdout.strip())
+    duration=max(1.0,(audio_duration+0.5)/len(slides))
     with listfile.open("w",encoding="utf-8") as f:
-        for p in slides: f.write(f"file '{p.as_posix()}'\nduration {duration}\n")
-        f.write(f"file '{slides[-1].as_posix()}'\n")
-    cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),"-vf",f"fps={c['video'].get('fps',30)},format=yuv420p","-c:v","libx264","-c:a","aac","-shortest",str(out)]
+        for p in slides: f.write(f"file '{p.as_posix()}'\\nduration {duration}\\n")
+        f.write(f"file '{slides[-1].as_posix()}'\\n")
+    w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
+    vf=f"scale={w}:{h},zoompan=z='1+0.07*mod(on\\,{int(duration*fps)})/{max(1,int(duration*fps))}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+    srt=WORK/"captions.srt"
+    if srt.exists() and srt.stat().st_size:
+        subtitle_path=str(srt.resolve()).replace("\\\\","/").replace(":","\\\\:")
+        vf+=f",subtitles='{subtitle_path}':force_style='FontName=Noto Sans Devanagari,FontSize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=180'"
+    cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
+         "-vf",vf,"-r",str(fps),"-c:v","libx264","-preset","veryfast","-crf","21",
+         "-c:a","aac","-b:a","128k","-shortest","-movflags","+faststart",str(out)]
     r=subprocess.run(cmd,capture_output=True,text=True)
-    if r.returncode: raise RuntimeError(r.stderr[-3000:])
+    if r.returncode: raise RuntimeError(r.stderr[-3500:])
     return out
-
-
 def youtube_upload(video,data,c):
     token_path=Path(env("YOUTUBE_TOKEN_FILE",str(ROOT/"token.json")))
     if not token_path.exists(): raise RuntimeError("YouTube OAuth token.json missing. Run oauth_setup.py locally first.")
