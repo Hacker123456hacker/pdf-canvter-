@@ -392,7 +392,8 @@ def render(slides,audio,c):
     segments=[]
     for i,slide in enumerate(slides):
         segment=WORK/f"segment_{i:02d}.mp4"
-        zoom=rf"scale={w}:{h},zoompan=z='min(zoom+0.0005\\,1.07)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
+        frames=max(1,int(duration*fps))
+        zoom=rf"scale={w}:{h},zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
         cmd=["ffmpeg","-y","-loop","1","-framerate",str(fps),"-i",str(slide),
              "-t",f"{duration:.4f}","-vf",zoom,"-an","-c:v","libx264",
              "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
