@@ -40,6 +40,27 @@ def gemini(prompt):
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
+def parse_gemini_json(raw):
+    """Parse Gemini JSON despite optional markdown fences or surrounding prose."""
+    text = (raw or "").strip()
+    text = re.sub(r"^\s*```(?:json)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```\s*$", "", text)
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("Gemini response did not contain a JSON object")
+    data = json.loads(text[start:end + 1])
+    for key in ("title", "narration", "slides"):
+        if not data.get(key):
+            raise ValueError("Gemini response missing required field: " + key)
+    if not isinstance(data["slides"], list) or not all(isinstance(x, str) and x.strip() for x in data["slides"]):
+        raise ValueError("Gemini slides must be a non-empty list of text strings")
+    if not isinstance(data.get("tags", []), list):
+        data["tags"] = []
+    if not isinstance(data.get("visual_queries", []), list):
+        data["visual_queries"] = []
+    return data
+
+
 def make_content(c):
     lang=c["content"].get("language","hi"); niche=c["content"].get("niche","technology")
     seed=c["content"].get("topic_seed","")
@@ -53,10 +74,8 @@ slides must be 6-8 short strings, each suitable for a vertical video card.
 visual_queries must be 6-8 short image-search queries in English, one for each slide, describing the
 main real-world object/person/place/concept to show. Prefer generic factual visuals over logos.
 Do not make medical/legal/financial claims or sensational misinformation.'''
-    raw=gemini(prompt).strip()
-    raw=re.sub(r'^```json\s*|\s*```$','',raw,flags=re.I)
-    data=json.loads(raw)
-    if not data.get("narration") or not data.get("slides"): raise ValueError("Gemini returned incomplete content")
+    data = parse_gemini_json(gemini(prompt))
+    data["visual_queries"] = [str(x) for x in data.get("visual_queries", []) if str(x).strip()]
     if not data.get("visual_queries"):
         data["visual_queries"] = [data["title"]] * len(data["slides"])
     return data
@@ -117,13 +136,24 @@ def download_visual(item, index):
         r.raise_for_status()
         ctype=r.headers.get("content-type","").lower()
         if not ctype.startswith("image/"): return None
-        data=r.content
-        if len(data)>12*1024*1024: return None
-        path.write_bytes(data)
+        limit = 12 * 1024 * 1024
+        if int(r.headers.get("content-length", "0") or 0) > limit:
+            return None
+        total = 0
+        with path.open("wb") as f:
+            for chunk in r.iter_content(chunk_size=64 * 1024):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > limit:
+                    path.unlink(missing_ok=True)
+                    return None
+                f.write(chunk)
         with Image.open(path) as im:
             im.verify()
         return path
     except Exception:
+        path.unlink(missing_ok=True)
         return None
 
 
@@ -238,7 +268,16 @@ def tts(text,c):
 
 def render(slides,audio,c):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
-    listfile=WORK/"slides.txt"; duration=max(1.0, c["content"].get("duration_seconds",60)/len(slides))
+    listfile=WORK/"slides.txt"
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1", str(audio)],
+        capture_output=True, text=True
+    )
+    if probe.returncode != 0:
+        raise RuntimeError("Could not determine narration duration: " + probe.stderr[-1000:])
+    audio_duration = float(probe.stdout.strip())
+    duration = max(1.0, (audio_duration + 0.5) / len(slides))
     with listfile.open("w",encoding="utf-8") as f:
         for p in slides: f.write(f"file '{p.as_posix()}'\nduration {duration}\n")
         f.write(f"file '{slides[-1].as_posix()}'\n")
@@ -256,7 +295,11 @@ def youtube_upload(video,data,c):
     from googleapiclient.http import MediaFileUpload
     from google.auth.transport.requests import Request
     creds=Credentials.from_authorized_user_file(str(token_path),["https://www.googleapis.com/auth/youtube.upload"])
-    if creds.expired and creds.refresh_token: creds.refresh(Request())
+    if creds.expired:
+        if not creds.refresh_token:
+            raise RuntimeError("YouTube OAuth token expired and has no refresh token. Re-run oauth_setup.py and update YOUTUBE_TOKEN_B64.")
+        creds.refresh(Request())
+        token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
     ch=c["channel"]; body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":ch.get("category_id","27"),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":ch.get("privacy_status","private"),"selfDeclaredMadeForKids":False}}
     res=yt.videos().insert(part="snippet,status",body=body,media_body=MediaFileUpload(str(video),chunksize=-1,resumable=True)).execute()
