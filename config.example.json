@@ -15,7 +15,7 @@
   },
   "visuals": {
     "enabled": true,
-    "provider": "google",
+    "provider": "wikimedia",
     "images_per_video": 8
   },
   "video": {
