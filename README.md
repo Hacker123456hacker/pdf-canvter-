@@ -5,7 +5,7 @@
 ## क्या करता है
 - Gemini API से नया topic + script + title/description/tags चुनता है
 - Hindi (या config में चुनी language) narration बनाता है
-- TTS audio + vertical 1080x1920 text slides + FFmpeg से MP4 बनाता है
+- TTS audio + Wikimedia की विषय-संबंधित असली तस्वीरें + vertical 1080x1920 photo-led scenes + हल्का camera-motion animation + Hindi subtitles + FFmpeg से MP4 बनाता है
 - YouTube OAuth के जरिए upload करता है
 - GitHub Actions generated MP4 को artifact के रूप में 7 दिन रखता है
 - Manual run के लिए `workflow_dispatch` भी है
@@ -15,11 +15,12 @@
 इस project में **वीडियो बनाने वाली कोई अलग API key नहीं लगती** और न ही किसी paid AI video-generation service (जैसे text-to-video API) की जरूरत है.
 
 - **केवल Gemini Text API key (`GEMINI_API_KEY`)** topic, title, narration/script और slide text बनाने के लिए जरूरी है.
-- Default text model अब `gemini-3.8-flash` है; पुराने `gemini-2.5-flash` पर निर्भर नहीं है. चाहो तो `GEMINI_MODEL` environment variable से model बदल सकते हो.
+- Default text model `gemini-2.5-flash` है. चाहो तो `GEMINI_MODEL` environment variable से model बदल सकते हो.
 - Hindi voice **Edge TTS** से बनती है.
 - Images अब default रूप से Wikimedia Commons से बिना API key के खोजी जाती हैं. Google Custom Search वैकल्पिक है; उसे चुनने पर भी परिणाम न मिलने पर Wikimedia fallback रहेगा. हर image का source/license metadata `output/visual_credits.json` में सेव होता है; इस्तेमाल से पहले संबंधित license की शर्तें देखें.
-- Images + text slides + voice को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
-- यह वास्तविक AI-generated moving presenter या lip-sync video नहीं है; अभी presenter एक animated-style graphic है और मुख्य visuals slides/images हैं.
+- Images + Hindi voice + synchronized word/phrase captions को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
+- पुराने cartoon presenter को पूरी तरह हटा दिया गया है. अब हर scene में topic-related photos, readable text, progress marker और subtle zoom/pan camera movement रहता है.
+- यह वास्तविक इंसान का AI talking-head या lip-sync नहीं है; यह photo-led explainer video है. मुफ्त GitHub Actions पर यही स्थिर विकल्प है.
 
 **API keys/token को repo में कभी commit न करें.** GitHub Actions में:- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
 - `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
