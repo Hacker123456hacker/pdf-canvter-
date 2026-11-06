@@ -17,7 +17,7 @@
 - **केवल Gemini Text API key (`GEMINI_API_KEY`)** topic, title, narration/script और slide text बनाने के लिए जरूरी है.
 - Default text model अब `gemini-3.8-flash` है; पुराने `gemini-2.5-flash` पर निर्भर नहीं है. चाहो तो `GEMINI_MODEL` environment variable से model बदल सकते हो.
 - Hindi voice **Edge TTS** से बनती है.
-- Images Wikimedia Commons से बिना API key के खोजी जाती हैं (Google Custom Search वैकल्पिक है).
+- Images अब default रूप से Wikimedia Commons से बिना API key के खोजी जाती हैं. Google Custom Search वैकल्पिक है; उसे चुनने पर भी परिणाम न मिलने पर Wikimedia fallback रहेगा. हर image का source/license metadata `output/visual_credits.json` में सेव होता है; इस्तेमाल से पहले संबंधित license की शर्तें देखें.
 - Images + text slides + voice को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
 - यह वास्तविक AI-generated moving presenter या lip-sync video नहीं है; अभी presenter एक animated-style graphic है और मुख्य visuals slides/images हैं.
 
