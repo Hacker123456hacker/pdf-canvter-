@@ -76,7 +76,9 @@ jobs:
           )
           PY
       - name: Validate Python source
-        run: python -m compileall -q agent.py oauth_setup.py
+        run: |
+          python -m compileall -q agent.py oauth_setup.py tests
+          python -m unittest discover -s tests -v
       - name: Generate and upload
         run: python agent.py
       - name: Save generated video as artifact
