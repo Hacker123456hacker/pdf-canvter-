@@ -34,39 +34,45 @@ def gemini(prompt):
     key = env("GEMINI_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY is missing")
-    model = env("GEMINI_MODEL", "gemini-2.5-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    primary = env("GEMINI_MODEL", "gemini-2.5-flash")
+    fallbacks = [x.strip() for x in env("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite").split(",") if x.strip()]
+    models = list(dict.fromkeys([primary] + fallbacks))
     last_error = None
 
-    # Gemini can occasionally respond slowly. Retry transient network/server errors
-    # with a longer read timeout instead of failing the entire video job immediately.
-    for attempt in range(1, 5):
-        try:
-            response = requests.post(url, json=payload, timeout=(20, 180))
-            if response.status_code in (408, 429, 500, 502, 503, 504):
+    # Try a lightweight fallback model when the primary Gemini endpoint is overloaded.
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        for attempt in range(1, 3):
+            try:
+                response = requests.post(
+                    url,
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                    timeout=(20, 180),
+                )
                 response.raise_for_status()
-            response.raise_for_status()
-            body = response.json()
-            candidates = body.get("candidates") or []
-            if not candidates:
-                feedback = body.get("promptFeedback", {})
-                raise RuntimeError(f"Gemini returned no candidate: {feedback or body}")
-            return candidates[0]["content"]["parts"][0]["text"]
-        except (requests.Timeout, requests.ConnectionError) as exc:
-            last_error = exc
-        except requests.HTTPError as exc:
-            last_error = exc
-            status = exc.response.status_code if exc.response is not None else None
-            if status not in (408, 429, 500, 502, 503, 504):
-                raise
-        if attempt < 4:
-            delay = min(15 * (2 ** (attempt - 1)), 60)
-            print(f"Gemini temporary error (attempt {attempt}/4): {last_error}. Retrying in {delay}s...")
-            time.sleep(delay)
+                body = response.json()
+                candidates = body.get("candidates") or []
+                if not candidates:
+                    feedback = body.get("promptFeedback", {})
+                    raise RuntimeError(f"Gemini {model} returned no candidate: {feedback or body}")
+                print(f"Gemini model used: {model}")
+                return candidates[0]["content"]["parts"][0]["text"]
+            except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+                last_error = exc
+                status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
+                if isinstance(exc, requests.HTTPError) and status not in (408, 429, 500, 502, 503, 504):
+                    raise
+                if attempt == 1:
+                    print(f"Gemini {model} temporary error (attempt 1/2): {exc}. Retrying in 12s...")
+                    time.sleep(12)
+            except RuntimeError as exc:
+                last_error = exc
+                break
 
-    raise RuntimeError(f"Gemini API failed after 4 attempts: {last_error}") from last_error
-
+    raise RuntimeError(
+        "Gemini generation failed on all configured models "
+        f"({', '.join(models)}). Last error: {last_error}"
+    ) from last_error
 
 def parse_gemini_json(raw):
     """Parse Gemini JSON despite optional markdown fences or surrounding prose."""
