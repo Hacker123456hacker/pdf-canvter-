@@ -41,34 +41,55 @@ jobs:
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
           YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
           set -euo pipefail
           if [ -z "${GEMINI_API_KEY:-}${GEMINI_API_KEY_2:-}${GEMINI_API_KEY_3:-}" ]; then
-            echo "::error::Add at least one Gemini key as GEMINI_API_KEY, GEMINI_API_KEY_2, or GEMINI_API_KEY_3 in Settings > Secrets and variables > Actions."
+            echo "::error::Add at least one Gemini key in GitHub Actions Secrets."
             exit 1
           fi
 
           export YOUTUBE_UPLOAD=false
           if [ -n "${YOUTUBE_TOKEN_B64:-}" ]; then
             if ! printf '%s' "$YOUTUBE_TOKEN_B64" | base64 --decode > token.json; then
-              echo "::error::YOUTUBE_TOKEN_B64 is not valid base64. Re-create it from token.json."
+              echo "::error::YOUTUBE_TOKEN_B64 is not valid base64."
               exit 1
             fi
+          elif [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ] && [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ]; then
+            python - <<'PY'
+          import json, os
+          from pathlib import Path
+          token = {
+              "token": "",
+              "refresh_token": os.environ["YOUTUBE_REFRESH_TOKEN"],
+              "token_uri": "https://oauth2.googleapis.com/token",
+              "client_id": os.environ["YOUTUBE_CLIENT_ID"],
+              "client_secret": os.environ["YOUTUBE_CLIENT_SECRET"],
+              "scopes": ["https://www.googleapis.com/auth/youtube.upload"],
+              "universe_domain": "googleapis.com",
+              "account": "",
+              "expiry": "2000-01-01T00:00:00Z"
+          }
+          Path("token.json").write_text(json.dumps(token), encoding="utf-8")
+          PY
+          fi
+
+          if [ -f token.json ]; then
             python - <<'PY'
           import json
           from pathlib import Path
           token = json.loads(Path("token.json").read_text(encoding="utf-8"))
-          if not token.get("refresh_token"):
-              raise SystemExit("OAuth token has no refresh_token. Re-run oauth_setup.py with consent and update YOUTUBE_TOKEN_B64.")
-          if not token.get("client_id") or not token.get("client_secret"):
-              raise SystemExit("OAuth token is missing client credentials. Re-run oauth_setup.py.")
+          if not token.get("refresh_token") or not token.get("client_id") or not token.get("client_secret"):
+              raise SystemExit("YouTube OAuth credentials are incomplete. Check YOUTUBE_TOKEN_B64 or the three YOUTUBE_* secrets.")
           PY
             export YOUTUBE_UPLOAD=true
-            echo "YouTube OAuth token validated; upload enabled."
+            echo "YouTube OAuth credentials validated; upload enabled."
           else
-            echo "::warning::YOUTUBE_TOKEN_B64 is not set. Video generation will run and save an artifact, but YouTube upload will be skipped."
+            echo "::warning::YouTube OAuth secrets are missing. Video generation will run and save an artifact, but upload will be skipped."
           fi
 
           python - <<'PY'
