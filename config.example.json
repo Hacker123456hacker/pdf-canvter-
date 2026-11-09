@@ -2,7 +2,7 @@
   "channel": {
     "title_prefix": "",
     "description": "AI-generated educational video. Verify facts before relying on them.",
-    "privacy_status": "private",
+    "privacy_status": "public",
     "category_id": "27",
     "language": "hi"
   },
