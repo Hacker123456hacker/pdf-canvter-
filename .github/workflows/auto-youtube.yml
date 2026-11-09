@@ -1,12 +1,21 @@
 name: AI YouTube Auto Publisher
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      video_type:
+        description: "Video type for manual runs"
+        required: true
+        type: choice
+        options:
+          - tech
+          - bhakti
+        default: tech
   schedule:
-    # 05:00 IST = 23:30 UTC (previous day)
+    # 05:00 IST = 23:30 UTC (previous day): Bhakti
     - cron: '30 23 * * *'
+    # 17:00 IST = 11:30 UTC: Technology
+    - cron: '30 11 * * *'
 
 permissions:
   contents: read
@@ -17,6 +26,21 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Select video profile
+        id: profile
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "${{ github.event.schedule }}" = "30 23 * * *" ]; then
+              PROFILE="bhakti"
+            else
+              PROFILE="tech"
+            fi
+          else
+            PROFILE="${{ inputs.video_type || 'tech' }}"
+          fi
+          echo "content_profile=$PROFILE" >> "$GITHUB_OUTPUT"
+          echo "Selected video profile: $PROFILE"
       - name: Check FFmpeg and install Hindi fonts only if needed
         run: |
           set -euo pipefail
@@ -113,6 +137,8 @@ jobs:
           python -m compileall -q agent.py oauth_setup.py tests
           python -m unittest discover -s tests -v
       - name: Generate and upload
+        env:
+          CONTENT_PROFILE: ${{ steps.profile.outputs.content_profile }}
         run: python agent.py
       - name: Save generated video as artifact
         uses: actions/upload-artifact@v4
