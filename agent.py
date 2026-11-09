@@ -105,22 +105,35 @@ def parse_gemini_json(raw):
 
 
 def make_content(c):
-    lang=c["content"].get("language","hi"); niche=c["content"].get("niche","technology")
+    lang=c["content"].get("language","hi")
+    profile=env("CONTENT_PROFILE","tech").lower()
+    if profile == "bhakti":
+        niche="Hindi devotional and spiritual content: bhajans, aarti, mantra meaning, festival traditions, stories from Hindu scriptures and practical values"
+        profile_rules="""Keep the tone respectful, peaceful and devotional. Choose a different bhakti topic each day: aarti, bhajan meaning, mantra meaning, festival tradition, or a short story/value from a Hindu scripture. Attribute scripture-based stories carefully; do not invent quotations, verses, miracles, historical facts, or claims. Do not present generated lyrics as traditional lyrics. Avoid asking viewers to pay, donate, or perform unsafe rituals."""
+        category_id="22"
+    else:
+        niche="Hindi technology, AI tools, smartphones, internet, useful apps, cybersecurity awareness and digital skills"
+        profile_rules="""Keep the tone practical, clear and exciting. Choose a different useful technology topic each day, prioritizing AI tools, Android/mobile tips, internet safety, useful apps and digital skills. Verify product names and avoid fabricated features, fake news, or unsafe hacking instructions."""
+        category_id="28"
     seed=c["content"].get("topic_seed","")
     avoid=", ".join(c["content"].get("avoid_topics",[])) or "none"
     target_seconds=max(30,min(60,int(c["content"].get("duration_seconds",60))))
     prompt=f'''Create ONE original short-form YouTube video in {lang} for the niche: {niche}.
-No daily topic will be supplied, so choose a useful, factual, evergreen topic yourself.
+Video profile: {profile}. {profile_rules}
+No daily topic will be supplied, so choose a fresh, useful topic yourself; do not repeat a generic topic.
 Topic hint (optional): {seed or "none"}. Avoid: {avoid}.
 Target narration length: 30-60 seconds, ideally about 50-55 seconds.
 Write roughly 100-125 words in natural, conversational spoken {lang}; do not make it too brief.
-Start with a strong 2-second hook, explain one useful idea with a concrete example, and finish with a memorable takeaway.
+Start with a strong 2-second hook, explain the topic clearly, and finish with a memorable takeaway.
 Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
 slides must contain 6-8 short scene captions in the exact order of the narration.
 visual_queries must contain exactly the same number of concise English image-search queries, one per scene, each only 2-5 concrete search terms.
 Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
+
     data = parse_gemini_json(gemini(prompt))
+    data["video_profile"] = profile
+    data["youtube_category_id"] = category_id
     # Gemini sometimes ignores the requested word count. Cap narration so Hindi
     # speech reliably fits the requested 30-60 second Shorts format.
     narration=data["narration"].strip()
@@ -462,7 +475,7 @@ def youtube_upload(video,data,c):
         creds.refresh(Request())
         token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
-    ch=c["channel"]; body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":ch.get("category_id","27"),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":ch.get("privacy_status","private"),"selfDeclaredMadeForKids":False}}
+    ch=c["channel"]; body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":ch.get("privacy_status","private"),"selfDeclaredMadeForKids":False}}
     res=yt.videos().insert(part="snippet,status",body=body,media_body=MediaFileUpload(str(video),chunksize=-1,resumable=True)).execute()
     print("YouTube upload:",res.get("id")); return res.get("id")
 
