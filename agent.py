@@ -162,7 +162,7 @@ Do not make medical/legal/financial claims or sensational misinformation.'''
     )
     topic_hashtags = []
     for tag in data.get("tags", []):
-        clean = re.sub(r"[^\\w]", "", str(tag), flags=re.UNICODE)
+        clean = re.sub(r"[^\w]", "", str(tag), flags=re.UNICODE)
         if len(clean) >= 2:
             hashtag = "#" + clean
             if hashtag.lower() not in {x.lower() for x in profile_hashtags + topic_hashtags}:
@@ -172,9 +172,9 @@ Do not make medical/legal/financial claims or sensational misinformation.'''
     hashtags = (profile_hashtags + topic_hashtags)[:5]
     description = str(data.get("description", "")).strip()
     # Avoid duplicating hashtags if Gemini already supplied them.
-    description = re.sub(r"(?:\\s*#[\\w]+)+\\s*$", "", description).rstrip()
+    description = re.sub(r"(?:\s*#[\w]+)+\s*$", "", description).rstrip()
     data["hashtags"] = hashtags
-    data["description"] = (description + "\\n\\n" + " ".join(hashtags)).strip()
+    data["description"] = (description + "\n\n" + " ".join(hashtags)).strip()
     print("YouTube hashtags:", " ".join(hashtags))
     return data
 
