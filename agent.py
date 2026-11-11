@@ -152,6 +152,30 @@ Do not make medical/legal/financial claims or sensational misinformation.'''
     data["visual_queries"] = [str(x) for x in data.get("visual_queries", []) if str(x).strip()]
     if not data.get("visual_queries"):
         data["visual_queries"] = [data["title"]] * len(data["slides"])
+
+    # Add a small set of relevant hashtags to the YouTube description.
+    # Keep profile hashtags first, then derive topic hashtags from Gemini tags.
+    profile_hashtags = (
+        ["#Bhakti", "#Krishna", "#SanatanDharma"]
+        if profile == "bhakti"
+        else ["#Technology", "#AI", "#TechTips"]
+    )
+    topic_hashtags = []
+    for tag in data.get("tags", []):
+        clean = re.sub(r"[^\\w]", "", str(tag), flags=re.UNICODE)
+        if len(clean) >= 2:
+            hashtag = "#" + clean
+            if hashtag.lower() not in {x.lower() for x in profile_hashtags + topic_hashtags}:
+                topic_hashtags.append(hashtag)
+        if len(topic_hashtags) >= 2:
+            break
+    hashtags = (profile_hashtags + topic_hashtags)[:5]
+    description = str(data.get("description", "")).strip()
+    # Avoid duplicating hashtags if Gemini already supplied them.
+    description = re.sub(r"(?:\\s*#[\\w]+)+\\s*$", "", description).rstrip()
+    data["hashtags"] = hashtags
+    data["description"] = (description + "\\n\\n" + " ".join(hashtags)).strip()
+    print("YouTube hashtags:", " ".join(hashtags))
     return data
 
 
