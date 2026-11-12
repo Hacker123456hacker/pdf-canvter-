@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime
 
 import requests
+from huggingface_media import generate_huggingface_assets
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from dotenv import load_dotenv
 
@@ -440,7 +441,7 @@ def tts(text,c):
     raise RuntimeError("Hindi TTS did not produce a valid 25-65 second narration after 3 attempts. "+str(reason))
 
 
-def render(slides,audio,c):
+def render(slides,audio,c,video_clip=None):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
     audio_duration=media_duration(audio)
@@ -454,10 +455,17 @@ def render(slides,audio,c):
         segment=WORK/f"segment_{i:02d}.mp4"
         frames=max(1,int(duration*fps))
         zoom=rf"scale={w}:{h},zoompan=z='1+0.07*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={w}x{h}:fps={fps},format=yuv420p"
-        cmd=["ffmpeg","-y","-loop","1","-framerate",str(fps),"-i",str(slide),
-             "-t",f"{duration:.4f}","-vf",zoom,"-an","-c:v","libx264",
-             "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
-             "-movflags","+faststart",str(segment)]
+        if i == 0 and video_clip and Path(video_clip).exists():
+            video_filter=f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={fps},format=yuv420p"
+            cmd=["ffmpeg","-y","-stream_loop","-1","-i",str(video_clip),
+                 "-t",f"{duration:.4f}","-vf",video_filter,"-an","-c:v","libx264",
+                 "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
+                 "-movflags","+faststart",str(segment)]
+        else:
+            cmd=["ffmpeg","-y","-loop","1","-framerate",str(fps),"-i",str(slide),
+                 "-t",f"{duration:.4f}","-vf",zoom,"-an","-c:v","libx264",
+                 "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
+                 "-movflags","+faststart",str(segment)]
         result=subprocess.run(cmd,capture_output=True,text=True)
         if result.returncode:
             raise RuntimeError(f"Could not render scene {i+1}: "+result.stderr[-2500:])
@@ -506,8 +514,12 @@ def youtube_upload(video,data,c):
 
 def main():
     c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
-    visual_paths, credits=fetch_visuals(data,c)
-    slides=make_slides(data["slides"],c,visual_paths); audio=tts(data["narration"],c); video=render(slides,audio,c)
+    hf_images, hf_video = generate_huggingface_assets(data, c, WORK)
+    fallback_paths, credits = fetch_visuals(data,c)
+    visual_paths = hf_images + fallback_paths
+    slides=make_slides(data["slides"],c,visual_paths)
+    audio=tts(data["narration"],c)
+    video=render(slides,audio,c,video_clip=hf_video)
     data["visual_credits"]=credits
     (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     print("Video:",video)
