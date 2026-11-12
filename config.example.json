@@ -24,5 +24,14 @@
     "fps": 30,
     "voice": "hi-IN-SwaraNeural",
     "tts_rate": "+0%"
+  },
+  "huggingface": {
+    "enabled": true,
+    "generate_images": true,
+    "generate_video": true,
+    "image_model": "black-forest-labs/FLUX.1-dev",
+    "video_model": "Wan-AI/Wan2.2-TI2V-5B",
+    "video_provider": "fal-ai",
+    "images_per_video": 6
   }
 }
