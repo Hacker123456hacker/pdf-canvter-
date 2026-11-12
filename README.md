@@ -4,6 +4,7 @@
 
 ## क्या करता है
 - Gemini API से नया topic + script + title/description/tags चुनता है
+- Hugging Face Inference Providers से scene-specific AI images और एक AI motion-video clip बनाने की कोशिश करता है; failure पर Wikimedia/still-scene fallback रहता है
 - Hindi (या config में चुनी language) narration बनाता है
 - TTS audio + Wikimedia की विषय-संबंधित असली तस्वीरें + vertical 1080x1920 photo-led scenes + हल्का camera-motion animation + Hindi subtitles + FFmpeg से MP4 बनाता है
 - YouTube OAuth के जरिए upload करता है
@@ -22,7 +23,7 @@
 - पुराने cartoon presenter को पूरी तरह हटा दिया गया है. अब हर scene में topic-related photos, readable text, progress marker और subtle zoom/pan camera movement रहता है.
 - यह वास्तविक इंसान का AI talking-head या lip-sync नहीं है; यह photo-led explainer video है. मुफ्त GitHub Actions पर यही स्थिर विकल्प है.
 
-**API keys/token को repo में कभी commit न करें.** GitHub Actions में:- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
+**API keys/token को repo में कभी commit न करें.** GitHub Actions में `HF_TOKEN` secret जोड़ें और Termux में `export HF_TOKEN='hf_...'` करें. Token में Inference Providers permission होनी चाहिए. Default models: `black-forest-labs/FLUX.1-dev` (images) और `Wan-AI/Wan2.2-TI2V-5B` (video, `fal-ai` provider). `HF_IMAGE_MODEL`, `HF_VIDEO_MODEL`, `HF_VIDEO_PROVIDER` से बदल सकते हैं. Provider access/credits/billing account के अनुसार बदलते हैं; इसे guaranteed free न मानें. GitHub Actions में:- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
 - `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
 - `GOOGLE_CSE_API_KEY` और `GOOGLE_CSE_ID` वैकल्पिक हैं; इनके बिना Wikimedia Commons से visuals खोजे जाएँगे.
 
@@ -43,6 +44,7 @@ pip install -r requirements.txt
 cp config.example.json config.json
 python oauth_setup.py
 export GEMINI_API_KEY='YOUR_KEY'
+export HF_TOKEN='hf_YOUR_TOKEN'
 export YOUTUBE_UPLOAD=true
 python agent.py
 ```
