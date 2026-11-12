@@ -68,6 +68,7 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
@@ -102,6 +103,10 @@ jobs:
           PY
           fi
 
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::warning::HF_TOKEN missing; Hugging Face generation will be skipped."
+          fi
+
           if [ -f token.json ]; then
             python - <<'PY'
           import json
@@ -123,6 +128,7 @@ jobs:
               "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
               "GEMINI_API_KEY_2": os.environ.get("GEMINI_API_KEY_2", ""),
               "GEMINI_API_KEY_3": os.environ.get("GEMINI_API_KEY_3", ""),
+              "HF_TOKEN": os.environ.get("HF_TOKEN", ""),
               "GOOGLE_CSE_API_KEY": os.environ.get("GOOGLE_CSE_API_KEY", ""),
               "GOOGLE_CSE_ID": os.environ.get("GOOGLE_CSE_ID", ""),
               "YOUTUBE_UPLOAD": os.environ.get("YOUTUBE_UPLOAD", "false"),
