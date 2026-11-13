@@ -11,6 +11,7 @@ from datetime import datetime
 
 import requests
 from huggingface_media import generate_huggingface_assets
+from cloudflare_media import generate_cloudflare_images
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from dotenv import load_dotenv
 
@@ -279,13 +280,15 @@ def download_visual(item, index):
         return None
 
 
-def fetch_visuals(data, c):
+def fetch_visuals(data, c, existing_count=0):
     visual_cfg=c.get("visuals",{})
     if not visual_cfg.get("enabled",True): return [], []
     provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","wikimedia")).lower()
     max_per= int(visual_cfg.get("images_per_video",8))
     items=[]
     queries=data.get("visual_queries",[])
+    remaining=max(0, max_per-int(existing_count))
+    queries=queries[int(existing_count):int(existing_count)+remaining]
     for q in queries:
         if len(items)>=max_per: break
         try:
@@ -311,7 +314,7 @@ def fetch_visuals(data, c):
             print(f"Visual search failed for '{q}': {e}")
         time.sleep(0.2)
     (OUT/"visual_credits.json").write_text(json.dumps(items,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(f"Visuals downloaded: {len(items)} / requested {min(len(queries), max_per)}")
+    print(f"Fallback visuals downloaded: {len(items)} / requested {len(queries)}")
     if not items:
         print("WARNING: No real photos downloaded from image providers; generated video will use designed backgrounds.")
     return [Path(x["path"]) for x in items], items
@@ -514,9 +517,10 @@ def youtube_upload(video,data,c):
 
 def main():
     c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
+    cf_images = generate_cloudflare_images(data, WORK)
     hf_images, hf_video = generate_huggingface_assets(data, c, WORK)
-    fallback_paths, credits = fetch_visuals(data,c)
-    visual_paths = hf_images + fallback_paths
+    fallback_paths, credits = fetch_visuals(data, c, existing_count=len(cf_images) + len(hf_images))
+    visual_paths = cf_images + hf_images + fallback_paths
     slides=make_slides(data["slides"],c,visual_paths)
     audio=tts(data["narration"],c)
     video=render(slides,audio,c,video_clip=hf_video)
