@@ -1,11 +1,11 @@
 # AI YouTube Auto Publisher
 
-यह repo रोज़ सुबह **05:00 IST** पर बिना daily topic input के एक short educational video बनाने और YouTube पर upload करने के लिए free-first automation देता है.
+यह repo रोज़ सुबह **05:00 IST** पर Bhakti और शाम **17:00 IST** पर Technology short video बनाने और YouTube पर upload करने के लिए free-first automation देता है।
 
 ## क्या करता है
-- Gemini API से नया topic + script + title/description/tags चुनता है
-- Hindi (या config में चुनी language) narration बनाता है
-- TTS audio + Wikimedia की विषय-संबंधित असली तस्वीरें + vertical 1080x1920 photo-led scenes + हल्का camera-motion animation + Hindi subtitles + FFmpeg से MP4 बनाता है
+- Gemini API से नया topic + script + title/description/tags चुनता है (सुबह Bhakti, शाम Technology profile)
+- Hindi narration बनाता है
+- TTS audio + विषय-संबंधित तस्वीरें + vertical 1080x1920 photo-led scenes + हल्का camera-motion animation + FFmpeg से MP4 बनाता है; स्क्रीन पर captions, boxes या scene numbering नहीं लगाता
 - YouTube OAuth के जरिए upload करता है
 - GitHub Actions generated MP4 को artifact के रूप में 7 दिन रखता है
 - Manual run के लिए `workflow_dispatch` भी है
@@ -26,7 +26,7 @@
 - `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
 - `GOOGLE_CSE_API_KEY` और `GOOGLE_CSE_ID` वैकल्पिक हैं; इनके बिना Wikimedia Commons से visuals खोजे जाएँगे.
 
-Workflow अब Python syntax और Gemini JSON parser के unit tests भी चलाता है. YouTube OAuth token में refresh token होना चाहिए; उसे बनाने के लिए `oauth_setup.py` को consent के साथ चलाएँ.
+Workflow Python syntax, Gemini JSON parser और MP4 quality-check tests चलाता है। Upload से पहले ffprobe audio/video streams, configured resolution और 25–65 सेकंड duration जाँचता है; 2 से कम अलग visuals मिलने पर upload रोकता है। YouTube OAuth token में refresh token होना चाहिए; उसे बनाने के लिए `oauth_setup.py` को consent के साथ चलाएँ.
 
 ## GitHub setup
 1. Google Cloud Console में YouTube Data API v3 enable करें और OAuth Desktop App credentials डाउनलोड करके local machine/Termux में `client_secret.json` रखें.
@@ -74,3 +74,8 @@ Add your Gemini keys in **GitHub → Settings → Secrets and variables → Acti
 At least one key is required. The workflow rotates through the configured keys and the configured Gemini models when it encounters quota, authentication, overload, or network errors. Keep all keys private; never commit them to the repository.
 
 The default target is now a **30–60 second YouTube Short** (about 50–55 seconds). The workflow asks for 6–8 topic-specific real-photo scenes and downloads Wikimedia Commons images when no Google image-search credentials are configured. Actual duration depends on the generated narration and Hindi speaking rate.
+
+
+## Upload quality gate
+
+हर generated MP4 को upload से पहले ffprobe से जाँचा जाता है: file size, video stream, audio stream, configured resolution और 25–65 सेकंड duration. जाँच fail होने पर upload नहीं होगा. यदि 2 से कम अलग photos/generated visuals मिलें, MP4 artifact के रूप में सुरक्षित रहेगा लेकिन YouTube upload रोक दिया जाएगा.
