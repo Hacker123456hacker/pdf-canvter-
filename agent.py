@@ -435,12 +435,12 @@ def render(slides,audio,c,video_clip=None):
             video_filter=f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={fps},format=yuv420p"
             cmd=["ffmpeg","-y","-stream_loop","-1","-i",str(video_clip),
                  "-t",f"{duration:.4f}","-vf",video_filter,"-an","-c:v","libx264",
-                 "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
+                 "-preset","ultrafast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
                  "-movflags","+faststart",str(segment)]
         else:
             cmd=["ffmpeg","-y","-loop","1","-framerate",str(fps),"-i",str(slide),
                  "-t",f"{duration:.4f}","-vf",zoom,"-an","-c:v","libx264",
-                 "-preset","veryfast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
+                 "-preset","ultrafast","-crf","21","-r",str(fps),"-pix_fmt","yuv420p",
                  "-movflags","+faststart",str(segment)]
         result=subprocess.run(cmd,capture_output=True,text=True)
         if result.returncode:
@@ -453,7 +453,7 @@ def render(slides,audio,c,video_clip=None):
     vf="null"
     cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
          "-map","0:v:0","-map","1:a:0","-vf",vf,"-r",str(fps),"-c:v","libx264",
-         "-preset","veryfast","-crf","21","-c:a","aac","-b:a","128k",
+         "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
          "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode:
