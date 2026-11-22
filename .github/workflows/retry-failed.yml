@@ -25,7 +25,15 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          echo "Attempt ${ATTEMPT} failed. Automatically retrying failed jobs..."
+          echo "Attempt ${ATTEMPT} failed. Checking whether the error is retryable..."
+          set +e
+          FAILED_LOG="$(gh run view "$RUN_ID" --repo "$REPOSITORY" --log-failed 2>&1)"
+          LOG_STATUS=$?
+          set -e
+          if [ "$LOG_STATUS" -eq 0 ] && printf '%s' "$FAILED_LOG" | grep -Eiq 'Gemini API response details \(HTTP (400|401|403|404)\)|returned HTTP (400|401|403|404)|invalid_grant'; then
+            echo "Permanent API/authentication error detected (HTTP 400/401/403/404 or invalid_grant). Automatic retry skipped; fix the configuration first."
+            exit 0
+          fi
           sleep 20
           gh run rerun "$RUN_ID" --failed --repo "$REPOSITORY"
-          echo "Retry requested. Maximum total attempts: 5."
+          echo "Retry requested for a potentially transient failure. Maximum total attempts: 5."
