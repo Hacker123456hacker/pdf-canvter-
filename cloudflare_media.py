@@ -1,5 +1,6 @@
 """Cloudflare Workers AI image generation for YouTube scenes."""
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -7,7 +8,7 @@ from PIL import Image
 
 
 def generate_cloudflare_images(data, work_dir):
-    """Generate up to 8 scene images through a secured Cloudflare Worker."""
+    """Generate scene images through a secured Cloudflare Worker, retrying transient failures."""
     endpoint = os.getenv("CLOUDFLARE_IMAGE_WORKER_URL", "").strip()
     token = os.getenv("CLOUDFLARE_IMAGE_TOKEN", "").strip()
     if not endpoint or not token:
@@ -24,24 +25,45 @@ def generate_cloudflare_images(data, work_dir):
             "Accurate real-world details, professional natural lighting, clear main subject, "
             "vertical 9:16 composition, no text, no captions, no watermark, no logos."
         )
-        try:
-            response = requests.post(
-                endpoint,
-                headers={"Authorization": f"Bearer {token}"},
-                json={"prompt": prompt, "steps": 4},
-                timeout=(15, 120),
-            )
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").lower()
-            if not content_type.startswith("image/"):
-                raise RuntimeError(f"Worker returned non-image response: {response.text[:300]}")
-            path = work / f"cloudflare_image_{index:02d}.jpg"
-            path.write_bytes(response.content)
-            with Image.open(path) as image:
-                image.verify()
-            image_paths.append(path)
-            print(f"Cloudflare Workers AI image saved: {path.name} ({len(response.content)} bytes)")
-        except Exception as exc:
-            print(f"WARNING: Cloudflare image {index} failed; fallback provider will be used: {exc}")
+        for attempt in range(3):
+            try:
+                response = requests.post(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={"prompt": prompt, "steps": 4},
+                    timeout=(15, 150),
+                )
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                    print(
+                        f"Cloudflare image {index}: temporary HTTP {response.status_code}; "
+                        f"retry {attempt + 1}/2"
+                    )
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                if not response.ok:
+                    detail = response.text[:500].replace("\\n", " ")
+                    raise RuntimeError(f"Worker HTTP {response.status_code}: {detail}")
+                content_type = response.headers.get("content-type", "").lower()
+                if not content_type.startswith("image/"):
+                    raise RuntimeError(
+                        f"Worker returned non-image response ({content_type}): "
+                        f"{response.text[:500]}"
+                    )
+                path = work / f"cloudflare_image_{index:02d}.jpg"
+                path.write_bytes(response.content)
+                with Image.open(path) as image:
+                    image.verify()
+                image_paths.append(path)
+                print(f"Cloudflare Workers AI image saved: {path.name} ({len(response.content)} bytes)")
+                break
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                if attempt < 2:
+                    print(f"Cloudflare image {index}: connection/timeout; retry {attempt + 1}/2 ({exc})")
+                    time.sleep(2 ** (attempt + 1))
+                    continue
+                print(f"WARNING: Cloudflare image {index} failed after retries; fallback provider will be used: {exc}")
+            except Exception as exc:
+                print(f"WARNING: Cloudflare image {index} failed; fallback provider will be used: {exc}")
+                break
     print(f"Cloudflare Workers AI images: {len(image_paths)} / requested {min(len(queries), 8)}")
     return image_paths
