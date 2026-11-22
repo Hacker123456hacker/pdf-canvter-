@@ -48,7 +48,7 @@ def gemini(prompt):
     for key_index, key in enumerate(keys, 1):
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            for attempt in range(1, 2):
+            for attempt in range(1, 3):
                 try:
                     response = requests.post(
                         url,
@@ -81,9 +81,9 @@ def gemini(prompt):
                     if status in (400, 401, 403, 404, 429):
                         print(f"Gemini key slot {key_index}, model {model} returned HTTP {status}; switching fallback.")
                         break
-                    if attempt == 1:
-                        print(f"Gemini key slot {key_index}, model {model} temporary error (attempt 1/2): {exc}. Retrying in 8s...")
-                        time.sleep(8)
+                    if attempt < 2:
+                        print(f"Gemini key slot {key_index}, model {model} temporary error (attempt {attempt}/2): {exc}. Retrying in 4s...")
+                        time.sleep(4)
                 except RuntimeError as exc:
                     last_error = exc
                     break
@@ -383,6 +383,48 @@ def media_duration(path):
     return float(probe.stdout.strip())
 
 
+
+def validate_video_probe(probe, expected_width=1080, expected_height=1920, min_duration=25, max_duration=65, file_size=0):
+    if file_size < 100_000:
+        raise RuntimeError(f"Generated MP4 is too small ({file_size} bytes)")
+    streams = probe.get("streams") or []
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
+    if not video:
+        raise RuntimeError("Generated MP4 has no video stream")
+    if not audio:
+        raise RuntimeError("Generated MP4 has no audio stream")
+    width, height = int(video.get("width") or 0), int(video.get("height") or 0)
+    if (width, height) != (int(expected_width), int(expected_height)):
+        raise RuntimeError(f"Unexpected video resolution {width}x{height}; expected {expected_width}x{expected_height}")
+    try:
+        duration = float((probe.get("format") or {}).get("duration", 0))
+    except (TypeError, ValueError):
+        duration = 0
+    if not min_duration <= duration <= max_duration:
+        raise RuntimeError(f"Video duration {duration:.2f}s is outside {min_duration}-{max_duration}s")
+    if not video.get("codec_name") or not audio.get("codec_name"):
+        raise RuntimeError("Video or audio codec metadata is missing")
+    return {"duration": duration, "width": width, "height": height, "video_codec": video["codec_name"], "audio_codec": audio["codec_name"]}
+
+
+def verify_video_quality(path, c):
+    video_path = Path(path)
+    if not video_path.is_file():
+        raise RuntimeError("Generated MP4 file is missing")
+    probe = subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(video_path)], capture_output=True, text=True, timeout=30)
+    if probe.returncode:
+        raise RuntimeError("ffprobe could not read generated MP4: " + probe.stderr[-1200:])
+    try:
+        metadata = json.loads(probe.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("ffprobe returned invalid metadata") from exc
+    v = c.get("video", {})
+    report = validate_video_probe(metadata, v.get("width", 1080), v.get("height", 1920), file_size=video_path.stat().st_size)
+    print("Video QC passed: %sx%s, %.2fs, video=%s, audio=%s" % (report["width"], report["height"], report["duration"], report["video_codec"], report["audio_codec"]))
+    return report
+
+
 def tts(text,c):
     audio=WORK/"voice.mp3"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
@@ -492,11 +534,19 @@ def main():
     slides=make_slides(data["slides"],c,visual_paths)
     audio=tts(data["narration"],c)
     video=render(slides,audio,c)
+    qc_report=verify_video_quality(video,c)
+    data["quality_check"]=qc_report
     data["visual_credits"]=credits
     (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     print("Video:",video)
-    if env("YOUTUBE_UPLOAD","false").lower()=="true": youtube_upload(video,data,c)
-    else: print("Upload skipped (set YOUTUBE_UPLOAD=true after OAuth is configured).")
+    unique_visuals = {str(Path(p).resolve()) for p in visual_paths if Path(p).is_file()}
+    if env("YOUTUBE_UPLOAD","false").lower()=="true":
+        if len(unique_visuals) < 2:
+            print("WARNING: YouTube upload blocked: fewer than 2 distinct visuals were available; MP4 retained as artifact.")
+        else:
+            youtube_upload(video,data,c)
+    else:
+        print("Upload skipped (set YOUTUBE_UPLOAD=true after OAuth is configured).")
 
 
 if __name__=="__main__":
