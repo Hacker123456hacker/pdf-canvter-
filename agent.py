@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import datetime
 
 import requests
-from huggingface_media import generate_huggingface_assets
 from cloudflare_media import generate_cloudflare_images
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from dotenv import load_dotenv
@@ -518,12 +517,11 @@ def youtube_upload(video,data,c):
 def main():
     c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
     cf_images = generate_cloudflare_images(data, WORK)
-    hf_images, hf_video = generate_huggingface_assets(data, c, WORK)
-    fallback_paths, credits = fetch_visuals(data, c, existing_count=len(cf_images) + len(hf_images))
-    visual_paths = cf_images + hf_images + fallback_paths
+    fallback_paths, credits = fetch_visuals(data, c, existing_count=len(cf_images))
+    visual_paths = cf_images + fallback_paths
     slides=make_slides(data["slides"],c,visual_paths)
     audio=tts(data["narration"],c)
-    video=render(slides,audio,c,video_clip=hf_video)
+    video=render(slides,audio,c)
     data["visual_credits"]=credits
     (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     print("Video:",video)
