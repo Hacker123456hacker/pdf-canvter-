@@ -48,12 +48,12 @@ def gemini(prompt):
     for key_index, key in enumerate(keys, 1):
         for model in models:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-            for attempt in range(1, 3):
+            for attempt in range(1, 2):
                 try:
                     response = requests.post(
                         url,
                         json={"contents": [{"parts": [{"text": prompt}]}]},
-                        timeout=(20, 180),
+                        timeout=(12, 75),
                     )
                     response.raise_for_status()
                     body = response.json()
@@ -337,55 +337,25 @@ def fit_cover(im, size):
 
 
 def make_slides(slides,c,visual_paths=None):
-    """Create photo-led vertical scenes; no cartoon/avatar overlay."""
+    """Create clean photo-only vertical scenes: no text, captions, boxes or numbering."""
     w,h=c["video"].get("width",1080),c["video"].get("height",1920)
     paths=[]; visual_paths=visual_paths or []
-    for i,text in enumerate(slides):
+    for i,_scene_text in enumerate(slides):
         if visual_paths:
             try:
                 with Image.open(visual_paths[i % len(visual_paths)]) as src:
-                    bg=fit_cover(src,(w,h)).filter(ImageFilter.GaussianBlur(radius=0.6))
-                im=bg.convert("RGBA")
-                overlay=Image.new("RGBA",(w,h),(5,9,20,112))
-                im=Image.alpha_composite(im,overlay)
+                    # Fill the vertical frame with the photo; no overlays or labels.
+                    bg=fit_cover(src,(w,h))
+                im=bg.convert("RGB")
             except Exception:
-                im=Image.new("RGBA",(w,h),(12,18,32,255))
+                im=Image.new("RGB",(w,h),(12,18,32))
         else:
-            im=Image.new("RGBA",(w,h),(12,18,32,255))
-            d=ImageDraw.Draw(im)
-            for x in range(-h,w,h//3):
-                d.ellipse((x,220,x+h,220+h),outline=(42,62,95,255),width=5)
-        d=ImageDraw.Draw(im)
-        # Editorial top label and readable headline panel.
-        small=font(max(24,int(w*0.027)),False)
-        title=font(max(48,int(w*0.064)),True)
-        d.rounded_rectangle((48,70,w-48,142),radius=28,fill=(8,15,28,190),outline=(255,255,255,70),width=2)
-        d.text((78,87),"HINDI • EXPLAINED",font=small,fill=(225,235,250,255))
-        words=text.split(); lines=[]; cur=""
-        for word in words:
-            test=(cur+" "+word).strip()
-            if d.textbbox((0,0),test,font=title)[2] < w-150:
-                cur=test
-            else:
-                if cur: lines.append(cur)
-                cur=word
-        if cur: lines.append(cur)
-        line_h=int(title.size*1.35)
-        block_h=min(len(lines[:5]),5)*line_h+70
-        y=int(h*0.31)
-        d.rounded_rectangle((42,y-38,w-42,y+block_h),radius=34,fill=(4,9,20,205),outline=(255,255,255,75),width=2)
-        for line in lines[:5]:
-            box=d.textbbox((0,0),line,font=title); tw=box[2]-box[0]
-            d.text(((w-tw)//2,y),line,font=title,fill=(255,255,255,255),stroke_width=1,stroke_fill=(0,0,0,180))
-            y+=line_h
-        # Minimal progress marker; FFmpeg adds subtle camera motion.
-        bar_y=h-105
-        d.rounded_rectangle((55,bar_y,w-55,bar_y+10),radius=5,fill=(255,255,255,85))
-        progress=int((w-110)*(i+1)/max(1,len(slides)))
-        d.rounded_rectangle((55,bar_y,55+progress,bar_y+10),radius=5,fill=(255,205,90,255))
-        d.text((55,h-78),f"{i+1:02d} / {len(slides):02d}",font=small,fill=(245,245,250,230))
-        p=WORK/f"slide_{i:02d}.png"; im.convert("RGB").save(p,quality=94); paths.append(p)
+            im=Image.new("RGB",(w,h),(12,18,32))
+        p=WORK/f"slide_{i:02d}.jpg"
+        im.save(p,quality=90,optimize=True)
+        paths.append(p)
     return paths
+
 def vtt_to_srt(vtt_path, srt_path):
     """Convert Edge TTS WebVTT captions to SRT for FFmpeg/libass."""
     import re
@@ -414,15 +384,15 @@ def media_duration(path):
 
 
 def tts(text,c):
-    audio=WORK/"voice.mp3"; captions=WORK/"voice.vtt"
+    audio=WORK/"voice.mp3"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
     # A successful CLI exit is not enough: Edge TTS can occasionally leave a tiny,
     # truncated MP3 behind. Never allow that to become a 0.2-second Shorts artifact.
     words=len(text.split())
     for attempt in range(1,4):
-        audio.unlink(missing_ok=True); captions.unlink(missing_ok=True)
+        audio.unlink(missing_ok=True)
         cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
-             "--write-media",str(audio),"--write-subtitles",str(captions)]
+             "--write-media",str(audio)]
         r=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
         if r.returncode:
             reason=(r.stderr or r.stdout)[-1500:]
@@ -435,12 +405,7 @@ def tts(text,c):
                 print(f"Hindi TTS output probe failed: {exc}")
             print(f"Hindi TTS audio duration: {seconds:.2f}s for {words} words")
             if 25 <= seconds <= 65:
-                srt=WORK/"captions.srt"
-                if captions.exists() and vtt_to_srt(captions,srt):
-                    return audio
-                if captions.exists():
-                    captions.unlink(missing_ok=True)
-                # Captions are optional; a complete voice track is not.
+                # Narration is audio-only; do not generate or burn subtitles.
                 return audio
             reason=f"audio duration {seconds:.2f}s is outside the valid 25-65s Shorts range"
             print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
@@ -486,10 +451,6 @@ def render(slides,audio,c,video_clip=None):
         for segment in segments:
             f.write("file '" + segment.as_posix() + "'\n")
     vf="null"
-    srt=WORK/"captions.srt"
-    if srt.exists() and srt.stat().st_size:
-        subtitle_path=str(srt.resolve()).replace("\\\\","/").replace(":","\\\\:")
-        vf+=f",subtitles='{subtitle_path}':force_style='FontName=Noto Sans Devanagari,FontSize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=180'"
     cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
          "-map","0:v:0","-map","1:a:0","-vf",vf,"-r",str(fps),"-c:v","libx264",
          "-preset","veryfast","-crf","21","-c:a","aac","-b:a","128k",
