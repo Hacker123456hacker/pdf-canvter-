@@ -66,6 +66,15 @@ def gemini(prompt):
                 except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
                     last_error = exc
                     status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
+                    if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                        try:
+                            detail = exc.response.json()
+                        except ValueError:
+                            detail = exc.response.text
+                        detail_text = json.dumps(detail, ensure_ascii=False) if isinstance(detail, (dict, list)) else str(detail)
+                        # Never print the request URL (it contains the API key); redact key-like values too.
+                        detail_text = re.sub(r"AIza[0-9A-Za-z_-]{20,}", "[REDACTED_API_KEY]", detail_text)
+                        print(f"Gemini API response details (HTTP {status}): {detail_text[:1500]}")
                     if isinstance(exc, requests.HTTPError) and status not in (400, 401, 403, 404, 408, 429, 500, 502, 503, 504):
                         raise
                     # A quota/auth/model error should immediately try the next option.
