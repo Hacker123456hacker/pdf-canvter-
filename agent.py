@@ -39,8 +39,8 @@ def gemini(prompt):
     ))
     if not keys:
         raise RuntimeError("Add GEMINI_API_KEY (and optionally GEMINI_API_KEY_2 / GEMINI_API_KEY_3) to GitHub Secrets.")
-    primary = env("GEMINI_MODEL", "gemini-2.5-flash")
-    fallbacks = [x.strip() for x in env("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash-lite").split(",") if x.strip()]
+    primary = env("GEMINI_MODEL", "gemini-3.8-flash")
+    fallbacks = [x.strip() for x in env("GEMINI_FALLBACK_MODELS", "gemini-3.5-flash,gemini-3.5-flash-lite").split(",") if x.strip()]
     models = list(dict.fromkeys([primary] + fallbacks))
     last_error = None
 
