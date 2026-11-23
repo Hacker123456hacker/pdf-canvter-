@@ -435,7 +435,8 @@ def render(slides,audio,c,subtitles_path=None,video_clip=None):
         "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
         "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=220'"
     )
-    music_path = Path(env("BACKGROUND_MUSIC_PATH")) if env("BACKGROUND_MUSIC_PATH") else None
+    music_setting = env("BACKGROUND_MUSIC_PATH", c["video"].get("background_music_path", ""))
+    music_path = Path(music_setting) if music_setting else None
     if music_path and music_path.is_file():
         cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
              "-stream_loop","-1","-i",str(music_path),
