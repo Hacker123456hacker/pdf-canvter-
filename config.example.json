@@ -1,15 +1,15 @@
 {
   "channel": {
     "title_prefix": "",
-    "description": "AI-generated educational video. Verify facts before relying on them.",
-    "privacy_status": "public",
-    "category_id": "27",
+    "description": "भक्ति और आध्यात्मिक ज्ञान पर आधारित वीडियो।",
+    "privacy_status": "private",
+    "category_id": "22",
     "language": "hi"
   },
   "content": {
     "language": "hi",
-    "niche": "technology, AI, internet and useful knowledge",
-    "duration_seconds": 60,
+    "niche": "Hindi devotional and spiritual content: mantra meanings, aarti, bhajan meanings, scripture stories and practical values",
+    "duration_seconds": 55,
     "topic_seed": "",
     "avoid_topics": []
   },
