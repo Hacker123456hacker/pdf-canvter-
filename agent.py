@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Free-first AI YouTube Shorts agent.
-Generates a Hindi script with Gemini, automatically finds topic-relevant visuals
-(Google Custom Search when configured, otherwise Wikimedia Commons), adds Hindi
-TTS, animated B-roll cards and a presenter, adds topic-related real photos, animated camera movement and Hindi subtitles, then optionally uploads to YouTube.
-Secrets are read from environment variables / local files.
-"""
+"""Free-first AI YouTube Shorts agent. Generates Hindi content, Cloudflare-only scene images, TTS, subtitles and uploads to YouTube. Missing Cloudflare images use designed placeholders; no external photo sources are used."""
 import json, os, re, subprocess, sys, time
 from pathlib import Path
 from datetime import datetime
@@ -199,130 +194,12 @@ def font(size, bold=True):
     return ImageFont.load_default()
 
 
-def search_google_images(query, limit=8):
-    """Search licensed images through Google's Custom Search JSON API when keys exist."""
-    key, cx = env("GOOGLE_CSE_API_KEY"), env("GOOGLE_CSE_ID")
-    if not key or not cx: return []
-    params = {
-        "key": key, "cx": cx, "q": query, "searchType": "image", "num": min(limit, 10),
-        "safe": "active", "imgType": "photo", "rights": "cc_publicdomain,cc_attribute,cc_sharealike",
-        "gl": "in", "lr": "lang_en"
-    }
-    r = requests.get("https://www.googleapis.com/customsearch/v1", params=params, timeout=30)
-    r.raise_for_status()
-    out=[]
-    for item in r.json().get("items",[]):
-        if item.get("link"):
-            out.append({"url":item["link"],"source":item.get("displayLink","Google Images"),"title":item.get("title",query),"page":item.get("image",{}).get("contextLink","")})
-    return out
-
-
-def search_wikimedia(query, limit=8):
-    """Keyless Wikimedia Commons search, restricted to actual photo files."""
-    params={
-        "action":"query","generator":"search",
-        "gsrsearch":f"filetype:bitmap {query}","gsrnamespace":"6","gsrlimit":limit,
-        "prop":"imageinfo","iiprop":"url|mime|extmetadata","iiurlwidth":"1200",
-        "format":"json","formatversion":"2"
-    }
-    headers={"User-Agent":"AIYouTubeAgent/1.1"}
-    response=None
-    for attempt in range(3):
-        response=requests.get("https://commons.wikimedia.org/w/api.php",params=params,headers=headers,timeout=30)
-        if response.status_code != 429:
-            response.raise_for_status()
-            break
-        wait=2 ** (attempt+1)
-        print(f"Wikimedia rate limit; retrying in {wait}s")
-        time.sleep(wait)
-    response.raise_for_status()
-    out=[]
-    blocked=("logo","icon","coat of arms","screenshot","diagram","chart","map","flag",
-             "symbol","presentation","slides","report","kit","record","paper","research")
-    for page in response.json().get("query",{}).get("pages",[]):
-        info=(page.get("imageinfo") or [{}])[0]
-        title=page.get("title","").replace("File:","")
-        # PDF/PPT files can expose JPEG page previews; never treat those as photos.
-        if Path(title).suffix.lower() not in (".jpg",".jpeg",".webp"):
-            continue
-        if any(term in title.lower() for term in blocked):
-            continue
-        if info.get("mime") not in ("image/jpeg","image/webp"):
-            continue
-        url=info.get("thumburl") or info.get("url")
-        if not url: continue
-        meta=info.get("extmetadata",{})
-        artist=(meta.get("Artist") or {}).get("value","")
-        license_name=(meta.get("LicenseShortName") or {}).get("value","")
-        out.append({"url":url,"source":"Wikimedia Commons","title":title,
-                    "page":"https://commons.wikimedia.org/wiki/"+page.get("title","").replace(" ","_"),
-                    "artist":artist,"license":license_name})
-    return out
-
-
-def download_visual(item, index):
-    path=WORK/f"visual_{index:02d}.jpg"
-    try:
-        r=requests.get(item["url"],headers={"User-Agent":"AIYouTubeAgent/1.0"},timeout=30,stream=True)
-        r.raise_for_status()
-        ctype=r.headers.get("content-type","").lower()
-        if not ctype.startswith("image/"): return None
-        limit = 12 * 1024 * 1024
-        if int(r.headers.get("content-length", "0") or 0) > limit:
-            return None
-        total = 0
-        with path.open("wb") as f:
-            for chunk in r.iter_content(chunk_size=64 * 1024):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > limit:
-                    path.unlink(missing_ok=True)
-                    return None
-                f.write(chunk)
-        with Image.open(path) as im:
-            im.verify()
-        return path
-    except Exception:
-        path.unlink(missing_ok=True)
-        return None
-
-
 def fetch_visuals(data, c):
-    """Find one distinct photo per scene, preserving scene/query alignment."""
-    visual_cfg=c.get("visuals",{})
-    queries=data.get("visual_queries",[])
-    if not visual_cfg.get("enabled",True): return [None for _ in queries], []
-    provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","wikimedia")).lower()
-    max_per=int(visual_cfg.get("images_per_video",8))
-    aligned=[]; items=[]; used=set()
-    for scene_index,q in enumerate(queries[:max_per]):
-        selected=None
-        try:
-            found=search_google_images(q,limit=6) if provider in ("google","auto") else []
-            if not found: found=search_wikimedia(q,limit=8)
-            for item in found:
-                if item.get("url") in used: continue
-                p=download_visual(item,scene_index)
-                if p:
-                    item["path"]=str(p); item["scene_query"]=str(q)
-                    selected=p; used.add(item.get("url")); items.append(item); break
-            if selected is None and provider in ("wikimedia","auto","google"):
-                simple=" ".join(str(q).split()[:4])
-                if simple and simple.lower()!=str(q).lower():
-                    for item in search_wikimedia(simple,limit=8):
-                        if item.get("url") in used: continue
-                        p=download_visual(item,scene_index)
-                        if p:
-                            item["path"]=str(p); item["scene_query"]=str(q)
-                            selected=p; used.add(item.get("url")); items.append(item); break
-        except Exception as e: print(f"Visual search failed for scene {scene_index+1} ('{q}'): {e}")
-        aligned.append(selected)
-        print(f"Scene {scene_index+1}: " + (f"photo matched to '{q}'" if selected else "no photo; designed fallback will be used"))
-        time.sleep(0.2)
-    (OUT/"visual_credits.json").write_text(json.dumps(items,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(f"Scene-specific photos downloaded: {sum(p is not None for p in aligned)} / {len(queries)}")
-    return aligned, items
+    """Cloudflare-only visuals; missing generations use designed placeholders."""
+    queries = data.get("visual_queries", [])
+    (OUT / "visual_credits.json").write_text("[]", encoding="utf-8")
+    print("External image search disabled: Cloudflare AI is the only photo provider.")
+    return [None for _ in queries], []
 
 
 def fit_cover(im, size):
@@ -608,12 +485,8 @@ def youtube_upload(video,data,c,thumbnail=None):
 def main():
     c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
     cf_images = generate_cloudflare_images(data, WORK)
-    fallback_paths, credits = fetch_visuals(data, c)
-    visual_paths = []
-    for i in range(len(data["slides"])):
-        cloud_image = cf_images[i] if i < len(cf_images) else None
-        fallback_image = fallback_paths[i] if i < len(fallback_paths) else None
-        visual_paths.append(cloud_image or fallback_image)
+    visual_paths = [cf_images[i] if i < len(cf_images) else None for i in range(len(data["slides"]))]
+    credits = []
     slides=make_slides(data["slides"],c,visual_paths)
     audio, subtitles=tts(data["narration"],c)
     video=render(slides,audio,c,subtitles_path=subtitles)
