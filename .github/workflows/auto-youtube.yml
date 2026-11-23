@@ -149,18 +149,68 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "Telegram disabled: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "::warning::Telegram success alert skipped: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
           python - <<'PY'
-          import json, os, urllib.parse, urllib.request
-          message = "✅ Bhakti video workflow successful.\nRun: " + os.environ["RUN_URL"]
-          payload = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": message}).encode()
+          import glob, json, os, urllib.parse, urllib.request
+          from pathlib import Path
+
+          files = sorted(glob.glob("output/*.json"), key=os.path.getmtime, reverse=True)
+          data = {}
+          if files:
+              try:
+                  data = json.loads(Path(files[0]).read_text(encoding="utf-8"))
+              except Exception as exc:
+                  print("WARNING: Could not read video metadata JSON:", type(exc).__name__, str(exc)[:300])
+
+          title = str(data.get("title") or "Title not found")
+          video_id = str(data.get("youtube_video_id") or "").strip()
+          video_url = "https://www.youtube.com/watch?v=" + video_id if video_id else ""
+          qc = data.get("quality_check") or {}
+          duration = qc.get("duration")
+          duration_text = f"{float(duration):.1f} sec" if isinstance(duration, (int, float)) else "Not recorded"
+          resolution = f"{qc.get('width', '?')}x{qc.get('height', '?')}"
+          video_files = sorted(glob.glob("output/*.mp4"), key=os.path.getmtime, reverse=True)
+          size_text = f"{Path(video_files[0]).stat().st_size / (1024 * 1024):.2f} MB" if video_files else "Not found"
+
+          if video_id:
+              upload_status = "SUCCESS — YouTube video uploaded"
+              link_line = "YouTube: " + video_url
+          else:
+              upload_status = "WORKFLOW SUCCESS — YouTube upload was skipped/not confirmed"
+              link_line = "YouTube link: Not available; check OAuth/upload settings and workflow logs"
+
+          tags = data.get("tags") or []
+          tags_text = ", ".join(str(x) for x in tags[:8]) or "Not recorded"
+          message = (
+              "✅ BHAKTI VIDEO WORKFLOW COMPLETED\\n"
+              f"Upload status: {upload_status}\\n"
+              f"Title: {title}\\n"
+              f"{link_line}\\n"
+              f"Video ID: {video_id or 'N/A'}\\n"
+              f"Duration: {duration_text} | Resolution: {resolution}\\n"
+              f"MP4 size: {size_text}\\n"
+              f"Tags: {tags_text}\\n"
+              f"Run: #{os.environ['RUN_NUMBER']} | Branch: {os.environ['BRANCH']}\\n"
+              f"Commit: {os.environ['COMMIT_SHA'][:12]}\\n"
+              f"Actions log: {os.environ['RUN_URL']}"
+          )
+          payload = urllib.parse.urlencode({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "disable_web_page_preview": "false" if video_url else "true",
+          }).encode()
           url = "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage"
           request = urllib.request.Request(url, data=payload)
-          with urllib.request.urlopen(request, timeout=20) as response: result=json.loads(response.read().decode())
-          if not result.get("ok"): raise SystemExit("Telegram API did not confirm message delivery")
-          print("Telegram success notification sent.")
+          with urllib.request.urlopen(request, timeout=25) as response:
+              result = json.loads(response.read().decode())
+          if not result.get("ok"):
+              raise SystemExit("Telegram API did not confirm success notification")
+          print("Detailed Telegram success notification sent.")
           PY
       - name: Notify Telegram on failure
         if: failure()
