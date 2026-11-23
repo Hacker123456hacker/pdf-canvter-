@@ -263,28 +263,58 @@ jobs:
           failed_step = "Not identified"
           log_tail = "GitHub job log could not be retrieved; open the run link for details."
           try:
-              jobs_data = json.loads(get(f"{api}/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"))
+              # The failure-notification step runs before GitHub marks the whole job
+              # as failed. Therefore job.conclusion can still be null/in_progress.
+              # Inspect this exact run attempt and find failed STEPS independently.
+              attempt = os.environ["RUN_ATTEMPT"]
+              jobs_url = (
+                  f"{api}/repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs"
+                  "?per_page=100"
+              )
+              jobs_data = json.loads(get(jobs_url))
               jobs = jobs_data.get("jobs", [])
-              failed = [j for j in jobs if j.get("conclusion") == "failure"]
-              if failed:
-                  job = failed[0]
-                  failed_job = job.get("name", failed_job)
-                  bad_steps = [s for s in job.get("steps", []) if s.get("conclusion") == "failure"]
+
+              candidates = []
+              for item in jobs:
+                  steps = item.get("steps") or []
+                  bad_steps = [
+                      step for step in steps
+                      if step.get("conclusion") == "failure"
+                  ]
+                  if bad_steps or item.get("conclusion") == "failure":
+                      candidates.append((item, bad_steps))
+
+              if candidates:
+                  job, bad_steps = candidates[0]
+                  failed_job = job.get("name") or failed_job
                   if bad_steps:
-                      failed_step = ", ".join(s.get("name", "Unknown") for s in bad_steps)
+                      failed_step = ", ".join(
+                          step.get("name") or f"Step {step.get('number', '?')}"
+                          for step in bad_steps
+                      )
+                  else:
+                      failed_step = "Job failed; GitHub did not provide a failed step"
+
                   try:
                       raw_zip = get(f"{api}/repos/{repo}/actions/jobs/{job['id']}/logs")
                       with zipfile.ZipFile(io.BytesIO(raw_zip)) as archive:
-                          chunks = []
-                          for name in archive.namelist():
-                              if name.lower().endswith(".txt"):
-                                  chunks.append(archive.read(name).decode("utf-8", "replace"))
+                          chunks = [
+                              archive.read(name).decode("utf-8", "replace")
+                              for name in archive.namelist()
+                              if name.lower().endswith(".txt")
+                          ]
                           if chunks:
                               log_tail = "\n".join(chunks)[-12000:]
                   except Exception as exc:
                       log_tail = f"Could not download job log: {type(exc).__name__}: {exc}"
               else:
-                  log_tail = "No failed job was returned by GitHub API. Check the run page."
+                  # Keep the report useful if GitHub's API has not indexed the
+                  # failed step yet or the attempt endpoint is temporarily stale.
+                  log_tail = (
+                      "GitHub API returned jobs, but no failed step was visible "
+                      "for this attempt yet. Open the run link for the live log. "
+                      f"Jobs returned: {len(jobs)}."
+                  )
           except Exception as exc:
               log_tail = f"Could not inspect GitHub run details: {type(exc).__name__}: {exc}"
 
