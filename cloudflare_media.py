@@ -25,6 +25,7 @@ def generate_cloudflare_images(data, work_dir):
             "Accurate real-world details, professional natural lighting, clear main subject, "
             "vertical 9:16 composition, no text, no captions, no watermark, no logos."
         )
+        saved_path = None
         for attempt in range(1, 3):
             path = work / f"cloudflare_image_{index:02d}.jpg"
             path.unlink(missing_ok=True)
@@ -54,7 +55,8 @@ def generate_cloudflare_images(data, work_dir):
                 with Image.open(path) as image:
                     image.verify()
                 image_paths.append(path)
-                print(f"Cloudflare Workers AI image saved: {path.name} ({len(response.content)} bytes)")
+                saved_path = path
+                print(f"Cloudflare Workers AI image saved for scene {index}: {path.name} ({len(response.content)} bytes)")
                 break
             except (requests.Timeout, requests.ConnectionError) as exc:
                 path.unlink(missing_ok=True)
@@ -67,5 +69,7 @@ def generate_cloudflare_images(data, work_dir):
                 path.unlink(missing_ok=True)
                 print(f"WARNING: Cloudflare image {index} failed; fallback provider will be used: {exc}")
                 break
-    print(f"Cloudflare Workers AI images: {len(image_paths)} / requested {min(len(queries), 6)}")
+        if saved_path is None: image_paths.append(None)
+    image_paths.extend([None] * max(0, min(len(queries), 6) - len(image_paths)))
+    print(f"Cloudflare Workers AI images: {sum(p is not None for p in image_paths)} / requested {min(len(queries), 6)}")
     return image_paths

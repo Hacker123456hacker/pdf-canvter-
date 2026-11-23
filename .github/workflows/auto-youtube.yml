@@ -142,3 +142,41 @@ jobs:
           name: ai-youtube-video-${{ github.run_number }}
           path: output/*
           retention-days: 7
+      - name: Notify Telegram on success
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "Telegram disabled: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          message = "✅ Bhakti video workflow successful.\nRun: " + os.environ["RUN_URL"]
+          payload = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": message}).encode()
+          url = "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage"
+          request = urllib.request.Request(url, data=payload)
+          with urllib.request.urlopen(request, timeout=20) as response: result=json.loads(response.read().decode())
+          if not result.get("ok"): raise SystemExit("Telegram API did not confirm message delivery")
+          print("Telegram success notification sent.")
+          PY
+      - name: Notify Telegram on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "Telegram disabled: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
+          python - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          message = "❌ Bhakti video workflow failed. Check logs: " + os.environ["RUN_URL"]
+          payload = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": message}).encode()
+          url = "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage"
+          request = urllib.request.Request(url, data=payload)
+          with urllib.request.urlopen(request, timeout=20) as response: result=json.loads(response.read().decode())
+          if not result.get("ok"): raise SystemExit("Telegram API did not confirm message delivery")
+          print("Telegram failure notification sent.")
+          PY

@@ -288,44 +288,41 @@ def download_visual(item, index):
         return None
 
 
-def fetch_visuals(data, c, existing_count=0):
+def fetch_visuals(data, c):
+    """Find one distinct photo per scene, preserving scene/query alignment."""
     visual_cfg=c.get("visuals",{})
-    if not visual_cfg.get("enabled",True): return [], []
-    provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","wikimedia")).lower()
-    max_per= int(visual_cfg.get("images_per_video",8))
-    items=[]
     queries=data.get("visual_queries",[])
-    remaining=max(0, max_per-int(existing_count))
-    queries=queries[int(existing_count):int(existing_count)+remaining]
-    for q in queries:
-        if len(items)>=max_per: break
+    if not visual_cfg.get("enabled",True): return [None for _ in queries], []
+    provider=env("IMAGE_SEARCH_PROVIDER",visual_cfg.get("provider","wikimedia")).lower()
+    max_per=int(visual_cfg.get("images_per_video",8))
+    aligned=[]; items=[]; used=set()
+    for scene_index,q in enumerate(queries[:max_per]):
+        selected=None
         try:
-            found=[]
-            if provider in ("google","auto"):
-                found=search_google_images(q,limit=4)
-            if not found:
-                found=search_wikimedia(q,limit=5)
-            # Retry Commons with a simpler query if the detailed search returns no usable photo.
-            downloaded=False
+            found=search_google_images(q,limit=6) if provider in ("google","auto") else []
+            if not found: found=search_wikimedia(q,limit=8)
             for item in found:
-                p=download_visual(item,len(items))
+                if item.get("url") in used: continue
+                p=download_visual(item,scene_index)
                 if p:
-                    item["path"]=str(p); items.append(item); downloaded=True; break
-            if not downloaded and provider in ("wikimedia","auto","google"):
+                    item["path"]=str(p); item["scene_query"]=str(q)
+                    selected=p; used.add(item.get("url")); items.append(item); break
+            if selected is None and provider in ("wikimedia","auto","google"):
                 simple=" ".join(str(q).split()[:4])
                 if simple and simple.lower()!=str(q).lower():
-                    for item in search_wikimedia(simple,limit=5):
-                        p=download_visual(item,len(items))
+                    for item in search_wikimedia(simple,limit=8):
+                        if item.get("url") in used: continue
+                        p=download_visual(item,scene_index)
                         if p:
-                            item["path"]=str(p); items.append(item); break
-        except Exception as e:
-            print(f"Visual search failed for '{q}': {e}")
+                            item["path"]=str(p); item["scene_query"]=str(q)
+                            selected=p; used.add(item.get("url")); items.append(item); break
+        except Exception as e: print(f"Visual search failed for scene {scene_index+1} ('{q}'): {e}")
+        aligned.append(selected)
+        print(f"Scene {scene_index+1}: " + (f"photo matched to '{q}'" if selected else "no photo; designed fallback will be used"))
         time.sleep(0.2)
     (OUT/"visual_credits.json").write_text(json.dumps(items,ensure_ascii=False,indent=2),encoding="utf-8")
-    print(f"Fallback visuals downloaded: {len(items)} / requested {len(queries)}")
-    if not items:
-        print("WARNING: No real photos downloaded from image providers; generated video will use designed backgrounds.")
-    return [Path(x["path"]) for x in items], items
+    print(f"Scene-specific photos downloaded: {sum(p is not None for p in aligned)} / {len(queries)}")
+    return aligned, items
 
 
 def fit_cover(im, size):
@@ -337,13 +334,14 @@ def fit_cover(im, size):
 
 
 def make_slides(slides,c,visual_paths=None):
-    """Create clean photo-only vertical scenes: no text, captions, boxes or numbering."""
+    """Create scenes using only their own matching image; never cycle unrelated photos."""
     w,h=c["video"].get("width",1080),c["video"].get("height",1920)
     paths=[]; visual_paths=visual_paths or []
     for i,_scene_text in enumerate(slides):
-        if visual_paths:
+        scene_image = visual_paths[i] if i < len(visual_paths) else None
+        if scene_image:
             try:
-                with Image.open(visual_paths[i % len(visual_paths)]) as src:
+                with Image.open(scene_image) as src:
                     # Fill the vertical frame with the photo; no overlays or labels.
                     bg=fit_cover(src,(w,h))
                 im=bg.convert("RGB")
@@ -615,8 +613,12 @@ def youtube_upload(video,data,c,thumbnail=None):
 def main():
     c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
     cf_images = generate_cloudflare_images(data, WORK)
-    fallback_paths, credits = fetch_visuals(data, c, existing_count=len(cf_images))
-    visual_paths = cf_images + fallback_paths
+    fallback_paths, credits = fetch_visuals(data, c)
+    visual_paths = []
+    for i in range(len(data["slides"])):
+        cloud_image = cf_images[i] if i < len(cf_images) else None
+        fallback_image = fallback_paths[i] if i < len(fallback_paths) else None
+        visual_paths.append(cloud_image or fallback_image)
     slides=make_slides(data["slides"],c,visual_paths)
     audio, subtitles=tts(data["narration"],c)
     video=render(slides,audio,c,subtitles_path=subtitles)
@@ -627,12 +629,13 @@ def main():
     data["visual_credits"]=credits
     (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     print("Video:",video)
-    unique_visuals = {str(Path(p).resolve()) for p in visual_paths if Path(p).is_file()}
+    unique_visuals = {str(Path(p).resolve()) for p in visual_paths if p and Path(p).is_file()}
     if env("YOUTUBE_UPLOAD","false").lower()=="true":
         if len(unique_visuals) < 2:
             print("WARNING: YouTube upload blocked: fewer than 2 distinct visuals were available; MP4 retained as artifact.")
         else:
-            youtube_upload(video,data,c,thumbnail=thumbnail)
+            data["youtube_video_id"] = youtube_upload(video,data,c,thumbnail=thumbnail)
+            (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     else:
         print("Upload skipped (set YOUTUBE_UPLOAD=true after OAuth is configured).")
 

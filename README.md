@@ -20,7 +20,7 @@ GitHub Actions scheduled runs में load के कारण देरी �
 7. कम-से-कम 2 distinct visual files न मिलने पर YouTube upload रोक दिया जाता है.
 8. MP4 और JSON metadata GitHub Actions artifact में 7 दिनों तक रखे जाते हैं.
 
-**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। हिंदी subtitles वीडियो में burn-in होते हैं। Scene queries के आधार पर अलग-अलग images माँगी जाती हैं, लेकिन image का scene से semantic मिलान अभी किसी vision-model से verify नहीं होता। Telegram notifications अभी implemented नहीं हैं.
+**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। हिंदी subtitles वीडियो में burn-in होते हैं। Scene queries के आधार पर अलग-अलग images माँगी जाती हैं, लेकिन image का scene से semantic मिलान अभी किसी vision-model से verify नहीं होता। Telegram success/failure alerts के लिए TELEGRAM_BOT_TOKEN और TELEGRAM_CHAT_ID secrets आवश्यक हैं.
 
 ## Safe publishing defaults
 
@@ -33,6 +33,7 @@ GitHub Actions scheduled runs में load के कारण देरी �
 - वैकल्पिक backup: `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`.
 - वैकल्पिक image worker: `CLOUDFLARE_IMAGE_WORKER_URL`, `CLOUDFLARE_IMAGE_TOKEN`.
 - वैकल्पिक Google image search: `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`; इनके बिना Wikimedia Commons fallback चलता है.
+- वैकल्पिक Telegram alerts: `TELEGRAM_BOT_TOKEN` और `TELEGRAM_CHAT_ID`.
 
 **API keys, OAuth token या client-secret JSON को GitHub repository में commit न करें।** इन्हें GitHub → Settings → Secrets and variables → Actions में रखें.
 

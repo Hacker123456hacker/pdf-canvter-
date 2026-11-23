@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from agent import make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt
+from agent import make_slides, make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt
 from PIL import Image
 
 
@@ -108,3 +108,23 @@ class ThumbnailTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SceneAlignmentTests(unittest.TestCase):
+    def test_missing_scene_image_does_not_reuse_another_scenes_photo(self):
+        from unittest.mock import patch
+        import agent
+        with TemporaryDirectory() as tmp:
+            original_work = agent.WORK
+            agent.WORK = Path(tmp)
+            try:
+                first = Path(tmp) / "first.jpg"
+                Image.new("RGB", (80, 120), (255, 0, 0)).save(first)
+                scenes = make_slides(["scene one", "scene two"], {"video": {"width": 80, "height": 120}}, [first, None])
+                self.assertEqual(len(scenes), 2)
+                with Image.open(scenes[0]) as a, Image.open(scenes[1]) as b:
+                    self.assertGreater(a.getpixel((40, 60))[0], 240)
+                    self.assertLess(a.getpixel((40, 60))[1], 20)
+                    self.assertNotEqual(b.getpixel((40, 60)), (255, 0, 0))
+            finally:
+                agent.WORK = original_work
+                for p in Path(tmp).glob("slide_*.jpg"): p.unlink(missing_ok=True)
