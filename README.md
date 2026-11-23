@@ -20,7 +20,7 @@ GitHub Actions scheduled runs में load के कारण देरी �
 7. कम-से-कम 2 distinct visual files न मिलने पर YouTube upload रोक दिया जाता है.
 8. MP4 और JSON metadata GitHub Actions artifact में 7 दिनों तक रखे जाते हैं.
 
-**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। Code में WebVTT-to-SRT helper और subtitle test मौजूद हैं, लेकिन मौजूदा render pipeline में captions burn-in नहीं होते। Semantic image relevance की automatic पहचान भी अभी पूर्ण नहीं है। Thumbnail generation/upload और Telegram notifications अभी implemented नहीं हैं.
+**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। हिंदी subtitles वीडियो में burn-in होते हैं। Scene queries के आधार पर अलग-अलग images माँगी जाती हैं, लेकिन image का scene से semantic मिलान अभी किसी vision-model से verify नहीं होता। Telegram notifications अभी implemented नहीं हैं.
 
 ## Safe publishing defaults
 
