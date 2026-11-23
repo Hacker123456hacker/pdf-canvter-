@@ -187,16 +187,16 @@ jobs:
           tags = data.get("tags") or []
           tags_text = ", ".join(str(x) for x in tags[:8]) or "Not recorded"
           message = (
-              "✅ BHAKTI VIDEO WORKFLOW COMPLETED\\n"
-              f"Upload status: {upload_status}\\n"
-              f"Title: {title}\\n"
-              f"{link_line}\\n"
-              f"Video ID: {video_id or 'N/A'}\\n"
-              f"Duration: {duration_text} | Resolution: {resolution}\\n"
-              f"MP4 size: {size_text}\\n"
-              f"Tags: {tags_text}\\n"
-              f"Run: #{os.environ['RUN_NUMBER']} | Branch: {os.environ['BRANCH']}\\n"
-              f"Commit: {os.environ['COMMIT_SHA'][:12]}\\n"
+              "✅ BHAKTI VIDEO WORKFLOW COMPLETED\n"
+              f"Upload status: {upload_status}\n"
+              f"Title: {title}\n"
+              f"{link_line}\n"
+              f"Video ID: {video_id or 'N/A'}\n"
+              f"Duration: {duration_text} | Resolution: {resolution}\n"
+              f"MP4 size: {size_text}\n"
+              f"Tags: {tags_text}\n"
+              f"Run: #{os.environ['RUN_NUMBER']} | Branch: {os.environ['BRANCH']}\n"
+              f"Commit: {os.environ['COMMIT_SHA'][:12]}\n"
               f"Actions log: {os.environ['RUN_URL']}"
           )
           payload = urllib.parse.urlencode({
