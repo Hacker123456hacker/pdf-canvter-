@@ -427,47 +427,47 @@ def verify_video_quality(path, c):
 
 def tts(text,c):
     audio=WORK/"voice.mp3"
+    vtt=WORK/"voice.vtt"
+    srt=WORK/"voice.srt"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
-    # A successful CLI exit is not enough: Edge TTS can occasionally leave a tiny,
-    # truncated MP3 behind. Never allow that to become a 0.2-second Shorts artifact.
     words=len(text.split())
     for attempt in range(1,4):
-        audio.unlink(missing_ok=True)
+        audio.unlink(missing_ok=True); vtt.unlink(missing_ok=True); srt.unlink(missing_ok=True)
         cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
-             "--write-media",str(audio)]
+             "--write-media",str(audio),"--write-subtitles",str(vtt)]
         r=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
         if r.returncode:
             reason=(r.stderr or r.stdout)[-1500:]
             print(f"Hindi TTS attempt {attempt}/3 failed: {reason}")
-        elif audio.exists() and audio.stat().st_size > 10_000:
+        elif audio.exists() and audio.stat().st_size > 10_000 and vtt.exists():
             try:
                 seconds=media_duration(audio)
+                captions_ok=vtt_to_srt(vtt,srt)
             except Exception as exc:
-                seconds=0
-                print(f"Hindi TTS output probe failed: {exc}")
-            print(f"Hindi TTS audio duration: {seconds:.2f}s for {words} words")
-            if 25 <= seconds <= 65:
-                # Narration is audio-only; do not generate or burn subtitles.
-                return audio
-            reason=f"audio duration {seconds:.2f}s is outside the valid 25-65s Shorts range"
+                seconds=0; captions_ok=False
+                print(f"Hindi TTS/subtitle validation failed: {exc}")
+            print(f"Hindi TTS duration: {seconds:.2f}s for {words} words; subtitles={'ready' if captions_ok else 'missing'}")
+            if 25 <= seconds <= 65 and captions_ok and srt.stat().st_size > 20:
+                return audio,srt
+            reason="invalid audio duration or missing/empty timed subtitles"
             print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
         else:
-            reason="audio file missing or suspiciously small"
+            reason="audio or subtitle file missing/suspiciously small"
             print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
         if attempt < 3:
             time.sleep(3 * attempt)
-    raise RuntimeError("Hindi TTS did not produce a valid 25-65 second narration after 3 attempts. "+str(reason))
+    raise RuntimeError("Hindi TTS did not produce valid 25-65 second audio and subtitles after 3 attempts. "+str(reason))
 
 
-def render(slides,audio,c,video_clip=None):
+def render(slides,audio,c,subtitles_path=None,video_clip=None):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
     audio_duration=media_duration(audio)
     if not 25 <= audio_duration <= 65:
         raise RuntimeError(f"Refusing invalid narration duration: {audio_duration:.2f}s")
+    if not subtitles_path or not Path(subtitles_path).is_file() or Path(subtitles_path).stat().st_size < 20:
+        raise RuntimeError("Timed Hindi subtitles are missing; refusing to render an incomplete video")
     duration=audio_duration/len(slides)
-    # The previous concat-of-PNGs pipeline emitted only one frame per still image.
-    # Render each still as a real timed video segment, then concatenate video segments.
     segments=[]
     for i,slide in enumerate(slides):
         segment=WORK/f"segment_{i:02d}.mp4"
@@ -492,20 +492,28 @@ def render(slides,audio,c,video_clip=None):
     with listfile.open("w",encoding="utf-8") as f:
         for segment in segments:
             f.write("file '" + segment.as_posix() + "'\n")
-    vf="null"
+    # Burn readable Hindi captions into the final video using FFmpeg/libass.
+    subtitle_file=Path(subtitles_path).resolve().as_posix().replace(":", r"\:").replace("'", r"\'")
+    subtitle_filter=(
+        "subtitles=filename='" + subtitle_file + "':"
+        "force_style='FontName=Noto Sans Devanagari,FontSize=18,"
+        "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
+        "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=220'"
+    )
     cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
-         "-map","0:v:0","-map","1:a:0","-vf",vf,"-r",str(fps),"-c:v","libx264",
+         "-map","0:v:0","-map","1:a:0","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
          "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
          "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode:
-        raise RuntimeError(result.stderr[-3500:])
+        raise RuntimeError("FFmpeg subtitle/video render failed: "+result.stderr[-3500:])
     final_duration=media_duration(out)
-    print(f"Final video duration: {final_duration:.2f}s")
+    print(f"Final video duration: {final_duration:.2f}s; Hindi subtitles burned in")
     if not 25 <= final_duration <= 65:
         out.unlink(missing_ok=True)
         raise RuntimeError(f"Rendered video duration is invalid: {final_duration:.2f}s; artifact rejected")
     return out
+
 
 def youtube_upload(video,data,c):
     token_path=Path(env("YOUTUBE_TOKEN_FILE",str(ROOT/"token.json")))
@@ -532,8 +540,8 @@ def main():
     fallback_paths, credits = fetch_visuals(data, c, existing_count=len(cf_images))
     visual_paths = cf_images + fallback_paths
     slides=make_slides(data["slides"],c,visual_paths)
-    audio=tts(data["narration"],c)
-    video=render(slides,audio,c)
+    audio, subtitles=tts(data["narration"],c)
+    video=render(slides,audio,c,subtitles_path=subtitles)
     qc_report=verify_video_quality(video,c)
     data["quality_check"]=qc_report
     data["visual_credits"]=credits
