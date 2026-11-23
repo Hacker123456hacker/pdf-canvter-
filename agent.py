@@ -356,20 +356,19 @@ def make_slides(slides,c,visual_paths=None):
         paths.append(p)
     return paths
 
-def vtt_to_srt(vtt_path, srt_path):
-    """Convert Edge TTS WebVTT captions to SRT for FFmpeg/libass."""
-    import re
-    raw=Path(vtt_path).read_text(encoding="utf-8")
-    cues=re.findall(r"(?m)^(\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}\.\d{3})[^\n]*\n(.*?)(?=\n\s*\n|\Z)",raw,re.S)
-    def stamp(value):
-        return value.replace(".",",")
-    rows=[]
-    for n,(begin,finish,caption) in enumerate(cues,1):
-        caption=re.sub(r"<[^>]+>","",caption).strip()
-        caption=" ".join(line.strip() for line in caption.splitlines() if line.strip())
+def vtt_to_srt(source_path, srt_path):
+    """Normalize Edge TTS subtitle output to SRT (edge-tts 7 emits SRT, not VTT)."""
+    raw = Path(source_path).read_text(encoding="utf-8-sig")
+    # Accept both SRT timestamps (comma) and older WebVTT timestamps (period).
+    pattern = r"(?m)^(\d{2}:\d{2}:\d{2}[,.]\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}[,.]\d{3})[^\n]*\n(.*?)(?=\n\s*\n|\Z)"
+    cues = re.findall(pattern, raw, re.S)
+    rows = []
+    for n, (begin, finish, caption) in enumerate(cues, 1):
+        caption = re.sub(r"<[^>]+>", "", caption).strip()
+        caption = " ".join(line.strip() for line in caption.splitlines() if line.strip())
         if caption:
-            rows.extend([str(n),f"{stamp(begin)} --> {stamp(finish)}",caption,""])
-    Path(srt_path).write_text("\n".join(rows),encoding="utf-8")
+            rows.extend([str(n), f"{begin.replace('.', ',')} --> {finish.replace('.', ',')}", caption, ""])
+    Path(srt_path).write_text("\n".join(rows), encoding="utf-8")
     return bool(rows)
 
 
@@ -427,7 +426,7 @@ def verify_video_quality(path, c):
 
 def tts(text,c):
     audio=WORK/"voice.mp3"
-    vtt=WORK/"voice.vtt"
+    vtt=WORK/"voice.srt"
     srt=WORK/"voice.srt"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
     words=len(text.split())
