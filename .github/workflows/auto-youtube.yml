@@ -25,6 +25,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Restore topic history
+        uses: actions/cache@v4
+        with:
+          path: state/topic_history.json
+          key: bhakti-topic-history-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            bhakti-topic-history-
       - name: Select video profile
         id: profile
         shell: bash
@@ -60,10 +67,9 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_ANALYTICS_TOKEN_B64: ${{ secrets.YOUTUBE_ANALYTICS_TOKEN_B64 }}
           CLOUDFLARE_IMAGE_WORKER_URL: ${{ secrets.CLOUDFLARE_IMAGE_WORKER_URL }}
           CLOUDFLARE_IMAGE_TOKEN: ${{ secrets.CLOUDFLARE_IMAGE_TOKEN }}
-          GOOGLE_CSE_API_KEY: ${{ secrets.GOOGLE_CSE_API_KEY }}
-          GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
           set -euo pipefail
           if [ -z "${GEMINI_API_KEY:-}${GEMINI_API_KEY_2:-}${GEMINI_API_KEY_3:-}" ]; then
@@ -72,6 +78,9 @@ jobs:
           fi
 
           export YOUTUBE_UPLOAD=false
+          if [ -n "${YOUTUBE_ANALYTICS_TOKEN_B64:-}" ]; then
+            printf '%s' "$YOUTUBE_ANALYTICS_TOKEN_B64" | base64 --decode > analytics_token.json
+          fi
           if [ -n "${YOUTUBE_TOKEN_B64:-}" ]; then
             if ! printf '%s' "$YOUTUBE_TOKEN_B64" | base64 --decode > token.json; then
               echo "::error::YOUTUBE_TOKEN_B64 is not valid base64."
@@ -119,9 +128,8 @@ jobs:
               "GEMINI_API_KEY_3": os.environ.get("GEMINI_API_KEY_3", ""),
               "CLOUDFLARE_IMAGE_WORKER_URL": os.environ.get("CLOUDFLARE_IMAGE_WORKER_URL", ""),
               "CLOUDFLARE_IMAGE_TOKEN": os.environ.get("CLOUDFLARE_IMAGE_TOKEN", ""),
-              "GOOGLE_CSE_API_KEY": os.environ.get("GOOGLE_CSE_API_KEY", ""),
-              "GOOGLE_CSE_ID": os.environ.get("GOOGLE_CSE_ID", ""),
               "YOUTUBE_UPLOAD": os.environ.get("YOUTUBE_UPLOAD", "false"),
+              "BACKGROUND_MUSIC_PATH": str(Path("assets/background.mp3")) if Path("assets/background.mp3").is_file() else "",
           }
           Path(".env").write_text(
               "".join(f"{key}={value}\n" for key, value in values.items()),
