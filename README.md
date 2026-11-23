@@ -15,12 +15,12 @@ GitHub Actions scheduled runs में load के कारण देरी �
 2. हर scene के लिए Cloudflare Workers AI से अधिकतम 6 scene images बनाने की कोशिश होती है.
 3. Wikimedia Commons और Google Custom Search पूरी तरह disabled हैं; कोई external photo website इस्तेमाल नहीं होती. Cloudflare image न बना पाए तो उस scene में designed placeholder रहेगा.
 4. Edge TTS Hindi narration बनाता है.
-5. Pillow + FFmpeg 1080×1920 vertical MP4 और subtle zoom movement बनाते हैं.
+5. Edge TTS Hindi voice, word-timed animated captions, optional low-volume background music और FFmpeg 1080×1920 vertical MP4 बनाते हैं.
 6. ffprobe QC video file size, audio/video streams, resolution और 25–65 sec duration जाँचता है.
 7. कम-से-कम 2 distinct visual files न मिलने पर YouTube upload रोक दिया जाता है.
 8. MP4 और JSON metadata GitHub Actions artifact में 7 दिनों तक रखे जाते हैं.
 
-**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। हिंदी subtitles वीडियो में burn-in होते हैं। Scene queries के आधार पर अलग-अलग images माँगी जाती हैं, लेकिन image का scene से semantic मिलान अभी किसी vision-model से verify नहीं होता। Telegram success/failure alerts के लिए TELEGRAM_BOT_TOKEN और TELEGRAM_CHAT_ID secrets आवश्यक हैं.
+**वर्तमान सीमाएँ:** यह अभी photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। उसके लिए compatible video-generation/lip-sync provider और उसकी API credentials चाहिए; कोई paid provider अपने-आप enable नहीं किया गया है। Cloudflare prompts में हर scene caption जोड़ा गया है और returned image dimensions/aspect ratio validate होते हैं, लेकिन semantic image verification के लिए vision-model worker अभी आवश्यक है। Telegram success/failure alerts के लिए TELEGRAM_BOT_TOKEN और TELEGRAM_CHAT_ID secrets आवश्यक हैं.
 
 ## Safe publishing defaults
 
@@ -35,6 +35,22 @@ GitHub Actions scheduled runs में load के कारण देरी �
 - वैकल्पिक Telegram alerts: `TELEGRAM_BOT_TOKEN` और `TELEGRAM_CHAT_ID`.
 
 **API keys, OAuth token या client-secret JSON को GitHub repository में commit न करें।** इन्हें GitHub → Settings → Secrets and variables → Actions में रखें.
+
+## Creator upgrades
+
+- Captions are split into individually timed word cues for a karaoke-style reveal.
+- Topic title history blocks exact normalized repeats across restored Actions cache runs.
+- SEO metadata is normalized and bounded; a local `analytics.html` dashboard is generated, with live 28-day views/likes/watch-time when the separate analytics token is configured.
+- A low-volume background track is mixed only when `assets/background.mp3` exists.
+- The existing slow zoom is retained; no unlicensed stock music, presenter footage, or paid service is silently downloaded.
+
+## Live analytics token setup (optional)
+
+1. Google Cloud Console में YouTube Analytics API enable करें.
+2. `client_secret.json` को repo की local working directory में रखें.
+3. `python analytics_oauth_setup.py` चलाएँ और consent दें.
+4. बने `analytics_token.json` को base64 करके GitHub Actions secret `YOUTUBE_ANALYTICS_TOKEN_B64` में रखें. Android/Termux पर: `base64 -w 0 analytics_token.json`.
+5. Upload के लिए मौजूदा `YOUTUBE_TOKEN_B64` अलग ही रहेगा; upload token में read scope जोड़ने की जरूरत नहीं.
 
 ## Local Termux setup
 
