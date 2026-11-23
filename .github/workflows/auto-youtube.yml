@@ -11,10 +11,10 @@ on:
           - bhakti
         default: bhakti
   schedule:
-    # 05:00 IST = 23:30 UTC (previous day): Bhakti
-    - cron: '30 23 * * *'
-    # 17:00 IST = 11:30 UTC: Bhakti
-    - cron: '30 11 * * *'
+    # 03:00 IST = 21:30 UTC (previous day): Bhakti
+    - cron: '30 21 * * *'
+    # 15:00 IST = 09:30 UTC: Bhakti
+    - cron: '30 9 * * *'
 
 permissions:
   contents: read
