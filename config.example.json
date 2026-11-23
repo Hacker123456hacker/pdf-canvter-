@@ -23,6 +23,7 @@
     "height": 1920,
     "fps": 30,
     "voice": "hi-IN-SwaraNeural",
-    "tts_rate": "+0%"
+    "tts_rate": "+0%",
+    "background_music_path": "assets/background.mp3"
   }
 }
