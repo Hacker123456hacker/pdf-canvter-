@@ -2,7 +2,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from agent import parse_gemini_json, validate_video_probe, vtt_to_srt
+from agent import make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt
+from PIL import Image
 
 
 class GeminiResponseTests(unittest.TestCase):
@@ -88,6 +89,21 @@ class SubtitleTests(unittest.TestCase):
             source.write_text("WEBVTT\\n\\n", encoding="utf-8")
             self.assertFalse(vtt_to_srt(source, target))
             self.assertEqual(target.read_text(encoding="utf-8"), "")
+
+
+
+class ThumbnailTests(unittest.TestCase):
+    def test_creates_1280x720_thumbnail(self):
+        with TemporaryDirectory() as tmp:
+            scene = Path(tmp) / "scene.jpg"
+            Image.new("RGB", (360, 640), (30, 60, 90)).save(scene)
+            thumb = make_thumbnail("भगवान श्रीकृष्ण का संदेश", scene, {"video": {}})
+            try:
+                with Image.open(thumb) as result:
+                    self.assertEqual(result.size, (1280, 720))
+                    self.assertEqual(result.format, "JPEG")
+            finally:
+                thumb.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
