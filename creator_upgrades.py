@@ -3,6 +3,7 @@ import html
 import json
 import re
 from pathlib import Path
+from datetime import date, timedelta
 
 
 def _timestamp_ms(value):
@@ -118,3 +119,50 @@ for(const r of (d.rows||[])){const tr=document.createElement('tr');for(const v o
     target = output / "analytics.html"
     target.write_text(page, encoding="utf-8")
     return target
+
+
+
+def fetch_youtube_analytics(token_path, output_dir):
+    """Fetch a basic 28-day channel report using a separate read-only OAuth token."""
+    from google.oauth2.credentials import Credentials
+    from google.auth.transport.requests import Request
+    from googleapiclient.discovery import build
+
+    token_path = Path(token_path)
+    if not token_path.is_file():
+        return write_analytics_dashboard(output_dir, message="Add YOUTUBE_ANALYTICS_TOKEN_B64 with yt-analytics.readonly permission to enable live analytics.")
+    creds = Credentials.from_authorized_user_file(
+        str(token_path), ["https://www.googleapis.com/auth/yt-analytics.readonly"]
+    )
+    if creds.expired:
+        if not creds.refresh_token:
+            raise RuntimeError("Analytics token expired and has no refresh token")
+        creds.refresh(Request())
+        token_path.write_text(creds.to_json(), encoding="utf-8")
+    api = build("youtubeAnalytics", "v2", credentials=creds, cache_discovery=False)
+    end = date.today() - timedelta(days=2)
+    start = end - timedelta(days=27)
+    response = api.reports().query(
+        ids="channel==MINE",
+        startDate=start.isoformat(),
+        endDate=end.isoformat(),
+        metrics="views,likes,estimatedMinutesWatched",
+        dimensions="day",
+        sort="day",
+    ).execute()
+    headers = [x.get("name") for x in response.get("columnHeaders", [])]
+    rows = response.get("rows", [])
+    report_rows = []
+    for row in rows:
+        item = dict(zip(headers, row))
+        report_rows.append([
+            item.get("day", ""),
+            item.get("views", 0),
+            item.get("likes", 0),
+            item.get("estimatedMinutesWatched", 0),
+        ])
+    payload = {
+        "status": f"Last 28 complete days: {start.isoformat()} to {end.isoformat()}",
+        "rows": report_rows,
+    }
+    return write_analytics_dashboard(output_dir, payload)
