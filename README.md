@@ -1,41 +1,43 @@
-# AI YouTube Auto Publisher
+# AI YouTube Auto Publisher — Bhakti Edition
 
-यह repo रोज़ सुबह **05:00 IST** पर Bhakti और शाम **17:00 IST** पर Technology short video बनाने और YouTube पर upload करने के लिए free-first automation देता है।
+यह project GitHub Actions पर रोज़ दो Hindi Bhakti Shorts बनाने के लिए है। यह **Bhakti-only** है; Technology profile workflow में disabled है.
 
-## क्या करता है
-- Gemini API से नया topic + script + title/description/tags चुनता है (सुबह Bhakti, शाम Technology profile)
-- Hindi narration बनाता है
-- TTS audio + विषय-संबंधित तस्वीरें + vertical 1080x1920 photo-led scenes + हल्का camera-motion animation + FFmpeg से MP4 बनाता है; स्क्रीन पर captions, boxes या scene numbering नहीं लगाता
-- YouTube OAuth के जरिए upload करता है
-- GitHub Actions generated MP4 को artifact के रूप में 7 दिन रखता है
-- Manual run के लिए `workflow_dispatch` भी है
+## Schedule
 
-## API key के बारे में साफ जानकारी
+- सुबह **03:00 IST** — Bhakti Short
+- दोपहर **15:00 IST** — Bhakti Short
 
-इस project में **वीडियो बनाने वाली कोई अलग API key नहीं लगती** और न ही किसी paid AI video-generation service (जैसे text-to-video API) की जरूरत है.
+GitHub Actions scheduled runs में load के कारण देरी हो सकती है; cron समय exact start guarantee नहीं करता। Manual run: **Actions → AI YouTube Auto Publisher → Run workflow**.
 
-- **केवल Gemini Text API key (`GEMINI_API_KEY`)** topic, title, narration/script और slide text बनाने के लिए जरूरी है.
-- Default text model `gemini-3.8-flash`; fallback models are `gemini-3.5-flash` and `gemini-3.5-flash-lite` है. चाहो तो `GEMINI_MODEL` environment variable से model बदल सकते हो.
-- Hindi voice **Edge TTS** से बनती है.
-- Images अब default रूप से Wikimedia Commons से बिना API key के खोजी जाती हैं. Google Custom Search वैकल्पिक है; उसे चुनने पर भी परिणाम न मिलने पर Wikimedia fallback रहेगा. हर image का source/license metadata `output/visual_credits.json` में सेव होता है; इस्तेमाल से पहले संबंधित license की शर्तें देखें.
-- Images + Hindi voice + synchronized word/phrase captions को **Python/Pillow और FFmpeg** जोड़कर MP4 बनाते हैं.
-- पुराने cartoon presenter को पूरी तरह हटा दिया गया है. अब हर scene में topic-related photos, readable text, progress marker और subtle zoom/pan camera movement रहता है.
-- यह वास्तविक इंसान का AI talking-head या lip-sync नहीं है; यह photo-led explainer video है. मुफ्त GitHub Actions पर यही स्थिर विकल्प है.
+## Pipeline
 
-**API keys/token को repo में कभी commit न करें.** GitHub Actions में:- `GEMINI_API_KEY` आवश्यक है — इसके बिना वीडियो नहीं बनेगा.
-- `YOUTUBE_TOKEN_B64` अपलोड के लिए आवश्यक है. अगर यह secret नहीं है, workflow वीडियो बनाकर artifact सेव करेगा और upload को स्पष्ट warning के साथ skip करेगा.
-- `GOOGLE_CSE_API_KEY` और `GOOGLE_CSE_ID` वैकल्पिक हैं; इनके बिना Wikimedia Commons से visuals खोजे जाएँगे.
+1. Gemini नया विषय, title, description, tags, narration, scene captions और visual search queries बनाता है.
+2. Cloudflare image worker configured होने पर अधिकतम 6 scene images बनाने की कोशिश होती है.
+3. Wikimedia Commons fallback से topic-related photos खोजी जाती हैं; Google Custom Search optional है.
+4. Edge TTS Hindi narration बनाता है.
+5. Pillow + FFmpeg 1080×1920 vertical MP4 और subtle zoom movement बनाते हैं.
+6. ffprobe QC video file size, audio/video streams, resolution और 25–65 sec duration जाँचता है.
+7. कम-से-कम 2 distinct visual files न मिलने पर YouTube upload रोक दिया जाता है.
+8. MP4 और JSON metadata GitHub Actions artifact में 7 दिनों तक रखे जाते हैं.
 
-Workflow Python syntax, Gemini JSON parser और MP4 quality-check tests चलाता है। Upload से पहले ffprobe audio/video streams, configured resolution और 25–65 सेकंड duration जाँचता है; 2 से कम अलग visuals मिलने पर upload रोकता है। YouTube OAuth token में refresh token होना चाहिए; उसे बनाने के लिए `oauth_setup.py` को consent के साथ चलाएँ.
+**वर्तमान सीमाएँ:** यह photo-led explainer है, वास्तविक AI talking-head/lip-sync नहीं। Code में WebVTT-to-SRT helper और subtitle test मौजूद हैं, लेकिन मौजूदा render pipeline में captions burn-in नहीं होते। Semantic image relevance की automatic पहचान भी अभी पूर्ण नहीं है। Thumbnail generation/upload और Telegram notifications अभी implemented नहीं हैं.
 
-## GitHub setup
-1. Google Cloud Console में YouTube Data API v3 enable करें और OAuth Desktop App credentials डाउनलोड करके local machine/Termux में `client_secret.json` रखें.
-2. `pip install -r requirements.txt && python oauth_setup.py` चलाएँ. इससे private `token.json` बनेगा.
-3. `base64 -w0 token.json` (Android/Termux में `base64 -w0 token.json`) का output GitHub repository secret `YOUTUBE_TOKEN_B64` में रखें.
-4. Gemini API key को repository secret `GEMINI_API_KEY` में रखें.
-5. Actions में **AI YouTube Auto Publisher** workflow को पहले `Run workflow` से test करें.
+## Safe publishing defaults
 
-## Local Termux mode
+`config.example.json` में privacy status **private** रखा गया है। पहली बार test के लिए private ही रखें। वीडियो देखकर और सब सही होने पर ही इसे unlisted/public करें। ध्यान दें: `config.json` मौजूद न होने पर agent `config.example.json` इस्तेमाल करता है.
+
+## Required GitHub Actions secrets
+
+- `GEMINI_API_KEY` — कम-से-कम एक Gemini key आवश्यक.
+- `YOUTUBE_TOKEN_B64` — YouTube upload के लिए OAuth token JSON का base64.
+- वैकल्पिक backup: `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`.
+- वैकल्पिक image worker: `CLOUDFLARE_IMAGE_WORKER_URL`, `CLOUDFLARE_IMAGE_TOKEN`.
+- वैकल्पिक Google image search: `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`; इनके बिना Wikimedia Commons fallback चलता है.
+
+**API keys, OAuth token या client-secret JSON को GitHub repository में commit न करें।** इन्हें GitHub → Settings → Secrets and variables → Actions में रखें.
+
+## Local Termux setup
+
 ```bash
 pkg update
 pkg install python ffmpeg
@@ -43,39 +45,21 @@ pip install -r requirements.txt
 cp config.example.json config.json
 python oauth_setup.py
 export GEMINI_API_KEY='YOUR_KEY'
-export YOUTUBE_UPLOAD=true
+export YOUTUBE_UPLOAD=false
 python agent.py
 ```
 
-Local mode में MP4 `output/` में रहता है. Android storage में copy करने के लिए:
+OAuth के लिए Google Cloud Console में YouTube Data API v3 enable करके Desktop App client JSON को `client_secret.json` नाम से रखें। `token.json` private रखें; GitHub पर raw token commit न करें.
+
+Local output `output/` में आता है। Android Downloads में copy करने के लिए:
+
 ```bash
 mkdir -p ~/storage/downloads/AIYouTube
 cp output/*.mp4 ~/storage/downloads/AIYouTube/
 ```
 
-## Configuration
-`config.json` में niche, language, voice, duration, privacy status आदि बदलें. Default YouTube privacy `private` है ताकि पहली automated run public न हो. Test के बाद `unlisted` या `public` कर सकते हैं.
+GitHub-hosted runner सीधे Android phone storage में file नहीं लिख सकता; cloud run का video artifact से डाउनलोड करना होगा.
 
-## Free limits / reality
-यह code paid video-generation service पर निर्भर नहीं है; Gemini/TTS/API services की free-tier limits बदल सकती हैं. GitHub Actions भी usage limits के अधीन है. Phone में automatic local save केवल तब reliable है जब Termux/device automation वास्तव में चल रही हो; GitHub-hosted runner सीधे आपके phone storage में file नहीं लिख सकता. Cloud run में video GitHub Actions artifact के रूप में मिलता है.
+## Quality and free-tier notes
 
-## Safety
-यह system generic educational content के लिए बनाया गया है. Publish करने से पहले facts/rights/YouTube policies की जाँच करें. Copyrighted music, clips या images बिना अधिकार के न जोड़ें.
-
-
-## Gemini API key backup and long-form video duration
-
-Add your Gemini keys in **GitHub → Settings → Secrets and variables → Actions**:
-
-- `GEMINI_API_KEY` — primary key
-- `GEMINI_API_KEY_2` — backup key
-- `GEMINI_API_KEY_3` — second backup key
-
-At least one key is required. The workflow rotates through the configured keys and the configured Gemini models when it encounters quota, authentication, overload, or network errors. Keep all keys private; never commit them to the repository.
-
-The default target is now a **30–60 second YouTube Short** (about 50–55 seconds). The workflow asks for 6–8 topic-specific real-photo scenes and downloads Wikimedia Commons images when no Google image-search credentials are configured. Actual duration depends on the generated narration and Hindi speaking rate.
-
-
-## Upload quality gate
-
-हर generated MP4 को upload से पहले ffprobe से जाँचा जाता है: file size, video stream, audio stream, configured resolution और 25–65 सेकंड duration. जाँच fail होने पर upload नहीं होगा. यदि 2 से कम अलग photos/generated visuals मिलें, MP4 artifact के रूप में सुरक्षित रहेगा लेकिन YouTube upload रोक दिया जाएगा.
+Workflow Python compile checks और unit tests चलाता है। Gemini, image services, Edge TTS और GitHub Actions की free limits बदल सकती हैं; पूरी तरह unlimited/free operation की guarantee नहीं है। हर image की license/source जानकारी जहाँ उपलब्ध हो `output/visual_credits.json` में रखी जाती है; publish से पहले image rights और source license जाँचें.

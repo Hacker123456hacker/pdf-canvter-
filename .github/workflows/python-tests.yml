@@ -1,0 +1,25 @@
+name: Python Quality Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Compile Python source
+        run: python -m compileall -q agent.py cloudflare_media.py oauth_setup.py tests
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v

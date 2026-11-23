@@ -81,6 +81,14 @@ class SubtitleTests(unittest.TestCase):
             self.assertIn("00:00:00,000 --> 00:00:00,500", output)
             self.assertIn("नमस्ते दुनिया", output)
 
+    def test_rejects_empty_webvtt(self):
+        with TemporaryDirectory() as tmp:
+            source = Path(tmp) / "empty.vtt"
+            target = Path(tmp) / "empty.srt"
+            source.write_text("WEBVTT\\n\\n", encoding="utf-8")
+            self.assertFalse(vtt_to_srt(source, target))
+            self.assertEqual(target.read_text(encoding="utf-8"), "")
+
 
 if __name__ == "__main__":
     unittest.main()
