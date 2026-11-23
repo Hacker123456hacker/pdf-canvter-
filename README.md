@@ -44,6 +44,14 @@ GitHub Actions scheduled runs में load के कारण देरी �
 - A low-volume background track is mixed only when `assets/background.mp3` exists.
 - The existing slow zoom is retained; no unlicensed stock music, presenter footage, or paid service is silently downloaded.
 
+## Live analytics token setup (optional)
+
+1. Google Cloud Console में YouTube Analytics API enable करें.
+2. `client_secret.json` को repo की local working directory में रखें.
+3. `python analytics_oauth_setup.py` चलाएँ और consent दें.
+4. बने `analytics_token.json` को base64 करके GitHub Actions secret `YOUTUBE_ANALYTICS_TOKEN_B64` में रखें. Android/Termux पर: `base64 -w 0 analytics_token.json`.
+5. Upload के लिए मौजूदा `YOUTUBE_TOKEN_B64` अलग ही रहेगा; upload token में read scope जोड़ने की जरूरत नहीं.
+
 ## Local Termux setup
 
 ```bash
