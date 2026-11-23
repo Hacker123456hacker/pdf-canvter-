@@ -407,6 +407,45 @@ def validate_video_probe(probe, expected_width=1080, expected_height=1920, min_d
     return {"duration": duration, "width": width, "height": height, "video_codec": video["codec_name"], "audio_codec": audio["codec_name"]}
 
 
+
+def make_thumbnail(title, scene_path, c):
+    """Create a 1280x720 YouTube thumbnail using the first scene and readable Hindi title."""
+    thumb = OUT / (datetime.now().strftime("%Y%m%d_%H%M%S") + "_thumbnail.jpg")
+    width, height = 1280, 720
+    try:
+        with Image.open(scene_path) as source:
+            image = fit_cover(source, (width, height)).convert("RGB")
+    except Exception:
+        image = Image.new("RGB", (width, height), (18, 24, 42))
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    for y in range(height):
+        alpha = int(35 + 185 * (y / height))
+        draw.line((0, y, width, y), fill=(0, 0, 0, alpha))
+    image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    title = re.sub(r"\\s+", " ", str(title)).strip()
+    words, lines, line = title.split(), [], ""
+    for word in words:
+        candidate = (line + " " + word).strip()
+        if draw.textbbox((0, 0), candidate, font=font(66)) [2] <= 1160:
+            line = candidate
+        else:
+            if line: lines.append(line)
+            line = word
+    if line: lines.append(line)
+    lines = lines[:3]
+    fnt = font(66)
+    y = height - 90 - len(lines) * 82
+    for line in lines:
+        draw.text((60 + 3, y + 3), line, font=fnt, fill=(0, 0, 0), stroke_width=3, stroke_fill=(0, 0, 0))
+        draw.text((60, y), line, font=fnt, fill=(255, 255, 255), stroke_width=2, stroke_fill=(35, 35, 35))
+        y += 82
+    image.save(thumb, "JPEG", quality=92, optimize=True)
+    print("Thumbnail created:", thumb)
+    return thumb
+
+
 def verify_video_quality(path, c):
     video_path = Path(path)
     if not video_path.is_file():
@@ -420,7 +459,24 @@ def verify_video_quality(path, c):
         raise RuntimeError("ffprobe returned invalid metadata") from exc
     v = c.get("video", {})
     report = validate_video_probe(metadata, v.get("width", 1080), v.get("height", 1920), file_size=video_path.stat().st_size)
-    print("Video QC passed: %sx%s, %.2fs, video=%s, audio=%s" % (report["width"], report["height"], report["duration"], report["video_codec"], report["audio_codec"]))
+    # Detect sustained black frames and long audio dropouts; short fades/pauses are allowed.
+    black = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(video_path), "-vf", "blackdetect=d=2:pix_th=0.10", "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=90)
+    if black.returncode not in (0, 1):
+        raise RuntimeError("Black-frame QC could not complete: " + black.stderr[-800:])
+    black_events = re.findall(r"black_start:([0-9.]+) black_end:([0-9.]+) black_duration:([0-9.]+)", black.stderr)
+    long_black = [float(event[2]) for event in black_events if float(event[2]) >= 2.0]
+    if long_black:
+        raise RuntimeError("Video QC rejected sustained black frames: " + ", ".join(f"{x:.2f}s" for x in long_black))
+    silence = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(video_path), "-af", "silencedetect=noise=-50dB:d=3", "-vn", "-f", "null", "-"], capture_output=True, text=True, timeout=90)
+    if silence.returncode not in (0, 1):
+        raise RuntimeError("Audio-silence QC could not complete: " + silence.stderr[-800:])
+    silence_events = re.findall(r"silence_duration: ([0-9.]+)", silence.stderr)
+    long_silence = [float(x) for x in silence_events if float(x) >= 3.0]
+    if long_silence:
+        raise RuntimeError("Video QC rejected long audio dropouts: " + ", ".join(f"{x:.2f}s" for x in long_silence))
+    report["black_frame_events"] = len(black_events)
+    report["long_silence_events"] = len(long_silence)
+    print("Video QC passed: %sx%s, %.2fs, video=%s, audio=%s; black/silence scan passed" % (report["width"], report["height"], report["duration"], report["video_codec"], report["audio_codec"]))
     return report
 
 
@@ -542,6 +598,8 @@ def main():
     audio, subtitles=tts(data["narration"],c)
     video=render(slides,audio,c,subtitles_path=subtitles)
     qc_report=verify_video_quality(video,c)
+    thumbnail=make_thumbnail(data["title"], slides[0], c)
+    data["thumbnail"]=str(thumbnail)
     data["quality_check"]=qc_report
     data["visual_credits"]=credits
     (OUT/(video.stem+".json")).write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
