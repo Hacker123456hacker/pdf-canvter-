@@ -6,7 +6,7 @@ from datetime import datetime
 
 import requests
 from cloudflare_media import generate_cloudflare_images
-from creator_upgrades import (build_seo_metadata, is_duplicate_topic, remember_topic, split_srt_word_by_word, write_analytics_dashboard)
+from creator_upgrades import (build_seo_metadata, is_duplicate_topic, remember_topic, split_srt_word_by_word, fetch_youtube_analytics)
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from dotenv import load_dotenv
 
@@ -513,7 +513,12 @@ def main():
         raise RuntimeError("Could not generate a non-duplicate topic after 3 attempts; refusing repeat upload.")
     print(data["title"])
     remember_topic(data["title"], history_path)
-    write_analytics_dashboard(OUT, message="Analytics API connection not configured yet; dashboard shell generated.")
+    try:
+        fetch_youtube_analytics(ROOT / "analytics_token.json", OUT)
+        print("YouTube Analytics dashboard generated:", OUT / "analytics.html")
+    except Exception as analytics_error:
+        print("WARNING: Analytics report unavailable; video publishing will continue:", str(analytics_error)[:500])
+        fetch_youtube_analytics(ROOT / "missing_analytics_token.json", OUT)
     cf_images = generate_cloudflare_images(data, WORK)
     visual_paths = [cf_images[i] if i < len(cf_images) else None for i in range(len(data["slides"]))]
     credits = []
