@@ -21,6 +21,7 @@ class CreatorUpgradeTests(unittest.TestCase):
             self.assertIn("दुनिया", result)
             self.assertIn("मित्रों", result)
             self.assertIn("00:00:02,000", result)
+            self.assertEqual(result.count(" --> "), 3)
 
     def test_topic_history_detects_normalized_duplicates(self):
         with TemporaryDirectory() as tmp:
