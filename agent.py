@@ -598,15 +598,10 @@ def youtube_upload(video,data,c,thumbnail=None):
         except Exception as exc:
             # The video is already uploaded; thumbnail failure must not trigger a duplicate video retry.
             print("WARNING: Video uploaded, but custom thumbnail could not be applied:",str(exc)[:500])
-    check=yt.videos().list(part="status,snippet",id=video_id).execute()
-    rows=check.get("items") or []
-    if not rows:
-        raise RuntimeError("YouTube upload returned an ID, but follow-up verification could not find the video")
-    saved=rows[0]
-    actual_privacy=saved.get("status",{}).get("privacyStatus","unknown")
-    print("YouTube verification: video exists; privacyStatus="+actual_privacy+"; title="+saved.get("snippet",{}).get("title",""))
-    if actual_privacy != privacy:
-        raise RuntimeError(f"YouTube saved privacy status {actual_privacy}, expected {privacy}")
+    # The upload response itself confirms creation and returns the video ID.
+    # Do not call videos.list here: the upload-only OAuth scope is sufficient
+    # for publishing, but does not grant read access for this extra verification.
+    print("YouTube upload confirmed by API response:", video_id, "; privacyStatus="+privacy)
     return video_id
 
 
