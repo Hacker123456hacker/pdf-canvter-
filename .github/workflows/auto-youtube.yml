@@ -4,17 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       video_type:
-        description: "Video type for manual runs"
+        description: "Only Bhakti videos are enabled"
         required: true
         type: choice
         options:
-          - tech
           - bhakti
-        default: tech
+        default: bhakti
   schedule:
     # 05:00 IST = 23:30 UTC (previous day): Bhakti
     - cron: '30 23 * * *'
-    # 17:00 IST = 11:30 UTC: Technology
+    # 17:00 IST = 11:30 UTC: Bhakti
     - cron: '30 11 * * *'
 
 permissions:
@@ -30,15 +29,8 @@ jobs:
         id: profile
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "${{ github.event.schedule }}" = "30 23 * * *" ]; then
-              PROFILE="bhakti"
-            else
-              PROFILE="tech"
-            fi
-          else
-            PROFILE="${{ inputs.video_type || 'tech' }}"
-          fi
+          # Both scheduled runs and manual runs are locked to Bhakti.
+          PROFILE="bhakti"
           echo "content_profile=$PROFILE" >> "$GITHUB_OUTPUT"
           echo "Selected video profile: $PROFILE"
       - name: Check FFmpeg and install Hindi fonts only if needed
