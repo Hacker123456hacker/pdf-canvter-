@@ -19,11 +19,15 @@ def generate_cloudflare_images(data, work_dir):
     work.mkdir(parents=True, exist_ok=True)
     queries = data.get("visual_queries") or [data.get("title", "documentary scene")]
     image_paths = []
+    captions = data.get("slides") or []
     for index, query in enumerate(queries[:6], 1):
+        caption = captions[index - 1] if index - 1 < len(captions) else ""
         prompt = (
-            f"Photorealistic cinematic documentary photograph about {query}. "
-            "Accurate real-world details, professional natural lighting, clear main subject, "
-            "vertical 9:16 composition, no text, no captions, no watermark, no logos."
+            f"Create one scene-specific photorealistic image. Scene caption: {caption}. "
+            f"Visual subject and composition: {query}. The image must depict the exact subject "
+            "of this scene, not a generic spiritual background. Use a single clear focal subject, "
+            "authentic Indian cultural details only when relevant, cinematic natural lighting, "
+            "vertical 9:16 framing, high detail, no text, no captions, no watermark, no logos."
         )
         saved_path = None
         for attempt in range(1, 3):
@@ -54,6 +58,11 @@ def generate_cloudflare_images(data, work_dir):
                 path.write_bytes(response.content)
                 with Image.open(path) as image:
                     image.verify()
+                    width, height = image.size
+                    if width < 256 or height < 256:
+                        raise RuntimeError(f"Generated image is too small: {width}x{height}")
+                    if width / max(height, 1) < 0.35 or width / max(height, 1) > 2.8:
+                        raise RuntimeError(f"Generated image has an unusable aspect ratio: {width}x{height}")
                 image_paths.append(path)
                 saved_path = path
                 print(f"Cloudflare Workers AI image saved for scene {index}: {path.name} ({len(response.content)} bytes)")
