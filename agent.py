@@ -6,6 +6,7 @@ from datetime import datetime
 
 import requests
 from cloudflare_media import generate_cloudflare_images
+from creator_upgrades import (build_seo_metadata, is_duplicate_topic, remember_topic, split_srt_word_by_word, write_analytics_dashboard)
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from dotenv import load_dotenv
 
@@ -137,6 +138,7 @@ Ask for real photographs of the actual subject (not illustrations, icons, logos,
 Do not make medical/legal/financial claims or sensational misinformation.'''
 
     data = parse_gemini_json(gemini(prompt))
+    data = build_seo_metadata(data)
     data["video_profile"] = profile
     data["youtube_category_id"] = category_id
     # Gemini sometimes ignores the requested word count. Cap narration so Hindi
@@ -373,6 +375,9 @@ def tts(text,c):
             try:
                 seconds=media_duration(audio)
                 captions_ok=vtt_to_srt(vtt,srt)
+                if captions_ok:
+                    word_count = split_srt_word_by_word(srt, srt)
+                    print(f"Animated word-level subtitle cues: {word_count}")
             except Exception as exc:
                 seconds=0; captions_ok=False
                 print(f"Hindi TTS/subtitle validation failed: {exc}")
@@ -430,10 +435,20 @@ def render(slides,audio,c,subtitles_path=None,video_clip=None):
         "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
         "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=220'"
     )
-    cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
-         "-map","0:v:0","-map","1:a:0","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
-         "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
-         "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
+    music_path = Path(env("BACKGROUND_MUSIC_PATH")) if env("BACKGROUND_MUSIC_PATH") else None
+    if music_path and music_path.is_file():
+        cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
+             "-stream_loop","-1","-i",str(music_path),
+             "-filter_complex","[2:a]volume=0.10[music];[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+             "-map","0:v:0","-map","[aout]","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
+             "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","160k",
+             "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
+        print("Background music mixed at 10% volume.")
+    else:
+        cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
+             "-map","0:v:0","-map","1:a:0","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
+             "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
+             "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode:
         raise RuntimeError("FFmpeg subtitle/video render failed: "+result.stderr[-3500:])
@@ -483,7 +498,22 @@ def youtube_upload(video,data,c,thumbnail=None):
 
 
 def main():
-    c=cfg(); print("Generating content..."); data=make_content(c); print(data["title"])
+    c=cfg()
+    history_path = ROOT / "state" / "topic_history.json"
+    data = None
+    for attempt in range(1, 4):
+        print(f"Generating fresh content (topic check {attempt}/3)...")
+        candidate = make_content(c)
+        if not is_duplicate_topic(candidate["title"], history_path):
+            data = candidate
+            break
+        print("Duplicate topic detected; requesting a different topic.")
+        c["content"].setdefault("avoid_topics", []).append(candidate["title"])
+    if data is None:
+        raise RuntimeError("Could not generate a non-duplicate topic after 3 attempts; refusing repeat upload.")
+    print(data["title"])
+    remember_topic(data["title"], history_path)
+    write_analytics_dashboard(OUT, message="Analytics API connection not configured yet; dashboard shell generated.")
     cf_images = generate_cloudflare_images(data, WORK)
     visual_paths = [cf_images[i] if i < len(cf_images) else None for i in range(len(data["slides"]))]
     credits = []
