@@ -1,6 +1,14 @@
 name: Hindi TTS and Subtitle Render Smoke Test
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "agent.py"
+      - "cloudflare_media.py"
+      - "requirements.txt"
+      - ".github/workflows/media-smoke-test.yml"
+      - "config.example.json"
   push:
     branches: [phase2/bhakti-quality-upgrades]
     paths:
