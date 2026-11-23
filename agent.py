@@ -570,7 +570,8 @@ def render(slides,audio,c,subtitles_path=None,video_clip=None):
     return out
 
 
-def youtube_upload(video,data,c):
+def youtube_upload(video,data,c,thumbnail=None):
+    """Upload a video, apply its generated thumbnail, then verify YouTube's saved status."""
     token_path=Path(env("YOUTUBE_TOKEN_FILE",str(ROOT/"token.json")))
     if not token_path.exists(): raise RuntimeError("YouTube OAuth token.json missing. Run oauth_setup.py locally first.")
     from google.oauth2.credentials import Credentials
@@ -584,9 +585,31 @@ def youtube_upload(video,data,c):
         creds.refresh(Request())
         token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
-    ch=c["channel"]; body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":ch.get("privacy_status","private"),"selfDeclaredMadeForKids":False}}
+    ch=c["channel"]
+    privacy=ch.get("privacy_status","private")
+    body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":privacy,"selfDeclaredMadeForKids":False}}
     res=yt.videos().insert(part="snippet,status",body=body,media_body=MediaFileUpload(str(video),chunksize=-1,resumable=True)).execute()
-    print("YouTube upload:",res.get("id")); return res.get("id")
+    video_id=res.get("id")
+    if not video_id:
+        raise RuntimeError("YouTube upload response did not include a video ID")
+    print("YouTube upload completed:",video_id)
+    if thumbnail and Path(thumbnail).is_file():
+        try:
+            yt.thumbnails().set(videoId=video_id,media_body=MediaFileUpload(str(thumbnail),mimetype="image/jpeg")).execute()
+            print("YouTube custom thumbnail applied:",video_id)
+        except Exception as exc:
+            # The video is already uploaded; thumbnail failure must not trigger a duplicate video retry.
+            print("WARNING: Video uploaded, but custom thumbnail could not be applied:",str(exc)[:500])
+    check=yt.videos().list(part="status,snippet",id=video_id).execute()
+    rows=check.get("items") or []
+    if not rows:
+        raise RuntimeError("YouTube upload returned an ID, but follow-up verification could not find the video")
+    saved=rows[0]
+    actual_privacy=saved.get("status",{}).get("privacyStatus","unknown")
+    print("YouTube verification: video exists; privacyStatus="+actual_privacy+"; title="+saved.get("snippet",{}).get("title",""))
+    if actual_privacy != privacy:
+        raise RuntimeError(f"YouTube saved privacy status {actual_privacy}, expected {privacy}")
+    return video_id
 
 
 def main():
@@ -609,7 +632,7 @@ def main():
         if len(unique_visuals) < 2:
             print("WARNING: YouTube upload blocked: fewer than 2 distinct visuals were available; MP4 retained as artifact.")
         else:
-            youtube_upload(video,data,c)
+            youtube_upload(video,data,c,thumbnail=thumbnail)
     else:
         print("Upload skipped (set YOUTUBE_UPLOAD=true after OAuth is configured).")
 
