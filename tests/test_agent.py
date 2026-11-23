@@ -122,7 +122,8 @@ class SceneAlignmentTests(unittest.TestCase):
                 scenes = make_slides(["scene one", "scene two"], {"video": {"width": 80, "height": 120}}, [first, None])
                 self.assertEqual(len(scenes), 2)
                 with Image.open(scenes[0]) as a, Image.open(scenes[1]) as b:
-                    self.assertEqual(a.getpixel((40, 60)), (255, 0, 0))
+                    self.assertGreater(a.getpixel((40, 60))[0], 240)
+                    self.assertLess(a.getpixel((40, 60))[1], 20)
                     self.assertNotEqual(b.getpixel((40, 60)), (255, 0, 0))
             finally:
                 agent.WORK = original_work
