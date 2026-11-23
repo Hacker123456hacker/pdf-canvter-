@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   generate-upload:
@@ -148,35 +149,184 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "Telegram disabled: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "::warning::Telegram success alert skipped: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
           python - <<'PY'
-          import json, os, urllib.parse, urllib.request
-          message = "✅ Bhakti video workflow successful.\nRun: " + os.environ["RUN_URL"]
-          payload = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": message}).encode()
+          import glob, json, os, urllib.parse, urllib.request
+          from pathlib import Path
+
+          files = sorted(glob.glob("output/*.json"), key=os.path.getmtime, reverse=True)
+          data = {}
+          if files:
+              try:
+                  data = json.loads(Path(files[0]).read_text(encoding="utf-8"))
+              except Exception as exc:
+                  print("WARNING: Could not read video metadata JSON:", type(exc).__name__, str(exc)[:300])
+
+          title = str(data.get("title") or "Title not found")
+          video_id = str(data.get("youtube_video_id") or "").strip()
+          video_url = "https://www.youtube.com/watch?v=" + video_id if video_id else ""
+          qc = data.get("quality_check") or {}
+          duration = qc.get("duration")
+          duration_text = f"{float(duration):.1f} sec" if isinstance(duration, (int, float)) else "Not recorded"
+          resolution = f"{qc.get('width', '?')}x{qc.get('height', '?')}"
+          video_files = sorted(glob.glob("output/*.mp4"), key=os.path.getmtime, reverse=True)
+          size_text = f"{Path(video_files[0]).stat().st_size / (1024 * 1024):.2f} MB" if video_files else "Not found"
+
+          if video_id:
+              upload_status = "SUCCESS — YouTube video uploaded"
+              link_line = "YouTube: " + video_url
+          else:
+              upload_status = "WORKFLOW SUCCESS — YouTube upload was skipped/not confirmed"
+              link_line = "YouTube link: Not available; check OAuth/upload settings and workflow logs"
+
+          tags = data.get("tags") or []
+          tags_text = ", ".join(str(x) for x in tags[:8]) or "Not recorded"
+          message = (
+              "✅ BHAKTI VIDEO WORKFLOW COMPLETED\n"
+              f"Upload status: {upload_status}\n"
+              f"Title: {title}\n"
+              f"{link_line}\n"
+              f"Video ID: {video_id or 'N/A'}\n"
+              f"Duration: {duration_text} | Resolution: {resolution}\n"
+              f"MP4 size: {size_text}\n"
+              f"Tags: {tags_text}\n"
+              f"Run: #{os.environ['RUN_NUMBER']} | Branch: {os.environ['BRANCH']}\n"
+              f"Commit: {os.environ['COMMIT_SHA'][:12]}\n"
+              f"Actions log: {os.environ['RUN_URL']}"
+          )
+          payload = urllib.parse.urlencode({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "disable_web_page_preview": "false" if video_url else "true",
+          }).encode()
           url = "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage"
           request = urllib.request.Request(url, data=payload)
-          with urllib.request.urlopen(request, timeout=20) as response: result=json.loads(response.read().decode())
-          if not result.get("ok"): raise SystemExit("Telegram API did not confirm message delivery")
-          print("Telegram success notification sent.")
+          with urllib.request.urlopen(request, timeout=25) as response:
+              result = json.loads(response.read().decode())
+          if not result.get("ok"):
+              raise SystemExit("Telegram API did not confirm success notification")
+          print("Detailed Telegram success notification sent.")
           PY
       - name: Notify Telegram on failure
         if: failure()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          CLOUDFLARE_IMAGE_TOKEN: ${{ secrets.CLOUDFLARE_IMAGE_TOKEN }}
+          YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then echo "Telegram disabled: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID secrets."; exit 0; fi
+          if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
+            echo "::warning::Telegram failure alert skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing."
+            exit 0
+          fi
           python - <<'PY'
-          import json, os, urllib.parse, urllib.request
-          message = "❌ Bhakti video workflow failed. Check logs: " + os.environ["RUN_URL"]
-          payload = urllib.parse.urlencode({"chat_id": os.environ["TELEGRAM_CHAT_ID"], "text": message}).encode()
+          import io, json, os, re, urllib.request, zipfile
+
+          api = os.environ["GITHUB_API_URL"].rstrip("/")
+          repo = os.environ["REPOSITORY"]
+          run_id = os.environ["RUN_ID"]
+          token = os.environ["GITHUB_TOKEN"]
+          headers = {
+              "Authorization": "Bearer " + token,
+              "Accept": "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "Bhakti-Workflow-Telegram-Notifier",
+          }
+
+          def get(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=35) as response:
+                  return response.read()
+
+          failed_job = "Not identified"
+          failed_step = "Not identified"
+          log_tail = "GitHub job log could not be retrieved; open the run link for details."
+          try:
+              jobs_data = json.loads(get(f"{api}/repos/{repo}/actions/runs/{run_id}/jobs?per_page=100"))
+              jobs = jobs_data.get("jobs", [])
+              failed = [j for j in jobs if j.get("conclusion") == "failure"]
+              if failed:
+                  job = failed[0]
+                  failed_job = job.get("name", failed_job)
+                  bad_steps = [s for s in job.get("steps", []) if s.get("conclusion") == "failure"]
+                  if bad_steps:
+                      failed_step = ", ".join(s.get("name", "Unknown") for s in bad_steps)
+                  try:
+                      raw_zip = get(f"{api}/repos/{repo}/actions/jobs/{job['id']}/logs")
+                      with zipfile.ZipFile(io.BytesIO(raw_zip)) as archive:
+                          chunks = []
+                          for name in archive.namelist():
+                              if name.lower().endswith(".txt"):
+                                  chunks.append(archive.read(name).decode("utf-8", "replace"))
+                          if chunks:
+                              log_tail = "\n".join(chunks)[-12000:]
+                  except Exception as exc:
+                      log_tail = f"Could not download job log: {type(exc).__name__}: {exc}"
+              else:
+                  log_tail = "No failed job was returned by GitHub API. Check the run page."
+          except Exception as exc:
+              log_tail = f"Could not inspect GitHub run details: {type(exc).__name__}: {exc}"
+
+          # Remove credentials if any were echoed by a dependency or third-party tool.
+          for key, value in os.environ.items():
+              if value and (key.endswith("_KEY") or "TOKEN" in key or "SECRET" in key):
+                  log_tail = log_tail.replace(value, "[REDACTED]")
+          log_tail = re.sub(r"(?i)(Bearer\s+)[A-Za-z0-9._~+/-]+=*", r"\1[REDACTED]", log_tail)
+          log_tail = re.sub(r"(?i)(api[_-]?key|access[_-]?token|client[_-]?secret)(\s*[:=]\s*)[^\s,;]+", r"\1\2[REDACTED]", log_tail)
+
+          # Prefer the traceback / ERROR context while retaining enough tail for diagnosis.
+          lines = [line for line in log_tail.splitlines() if line.strip()]
+          error_lines = [i for i, line in enumerate(lines) if re.search(r"ERROR|Error|Traceback|Exception|quota|429|failed|FAIL", line)]
+          if error_lines:
+              start = max(0, error_lines[-1] - 12)
+              focused = "\n".join(lines[start:])[-3000:]
+          else:
+              focused = "\n".join(lines[-35:])[-3000:]
+
+          message = (
+              "❌ BHAKTI VIDEO WORKFLOW FAILED\n"
+              f"Run: #{os.environ['RUN_NUMBER']} (attempt {os.environ['RUN_ATTEMPT']})\n"
+              f"Job: {failed_job}\n"
+              f"Failed step: {failed_step}\n"
+              f"Branch: {os.environ['BRANCH']}\n"
+              f"Event: {os.environ['EVENT_NAME']}\n"
+              f"Commit: {os.environ['COMMIT_SHA'][:12]}\n\n"
+              "ERROR DETAILS (log excerpt):\n" + focused +
+              "\n\nFULL LOG / RUN: " + os.environ["RUN_URL"]
+          )
+          # Telegram sendMessage hard limit is 4096 characters.
+          message = message[:3950]
+          payload = __import__("urllib.parse", fromlist=["urlencode"]).urlencode({
+              "chat_id": os.environ["TELEGRAM_CHAT_ID"],
+              "text": message,
+              "disable_web_page_preview": "true",
+          }).encode()
           url = "https://api.telegram.org/bot" + os.environ["TELEGRAM_BOT_TOKEN"] + "/sendMessage"
-          request = urllib.request.Request(url, data=payload)
-          with urllib.request.urlopen(request, timeout=20) as response: result=json.loads(response.read().decode())
-          if not result.get("ok"): raise SystemExit("Telegram API did not confirm message delivery")
-          print("Telegram failure notification sent.")
+          req = urllib.request.Request(url, data=payload)
+          with urllib.request.urlopen(req, timeout=25) as response:
+              result = json.loads(response.read().decode())
+          if not result.get("ok"):
+              raise SystemExit("Telegram API did not confirm failure alert delivery")
+          print("Detailed Telegram failure alert sent.")
           PY
