@@ -12,8 +12,8 @@ GitHub Actions scheduled runs में load के कारण देरी �
 ## Pipeline
 
 1. Gemini नया विषय, title, description, tags, narration, scene captions और visual search queries बनाता है.
-2. Cloudflare image worker configured होने पर अधिकतम 6 scene images बनाने की कोशिश होती है.
-3. Wikimedia Commons fallback से topic-related photos खोजी जाती हैं; Google Custom Search optional है.
+2. हर scene के लिए Cloudflare Workers AI से अधिकतम 6 scene images बनाने की कोशिश होती है.
+3. Wikimedia Commons और Google Custom Search पूरी तरह disabled हैं; कोई external photo website इस्तेमाल नहीं होती. Cloudflare image न बना पाए तो उस scene में designed placeholder रहेगा.
 4. Edge TTS Hindi narration बनाता है.
 5. Pillow + FFmpeg 1080×1920 vertical MP4 और subtle zoom movement बनाते हैं.
 6. ffprobe QC video file size, audio/video streams, resolution और 25–65 sec duration जाँचता है.
@@ -31,8 +31,7 @@ GitHub Actions scheduled runs में load के कारण देरी �
 - `GEMINI_API_KEY` — कम-से-कम एक Gemini key आवश्यक.
 - `YOUTUBE_TOKEN_B64` — YouTube upload के लिए OAuth token JSON का base64.
 - वैकल्पिक backup: `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`.
-- वैकल्पिक image worker: `CLOUDFLARE_IMAGE_WORKER_URL`, `CLOUDFLARE_IMAGE_TOKEN`.
-- वैकल्पिक Google image search: `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`; इनके बिना Wikimedia Commons fallback चलता है.
+- **आवश्यक image worker:** `CLOUDFLARE_IMAGE_WORKER_URL`, `CLOUDFLARE_IMAGE_TOKEN`. इन secrets के बिना सिर्फ designed placeholders बनेंगे और दो distinct visuals न मिलने पर YouTube upload रोक दिया जाएगा.
 - वैकल्पिक Telegram alerts: `TELEGRAM_BOT_TOKEN` और `TELEGRAM_CHAT_ID`.
 
 **API keys, OAuth token या client-secret JSON को GitHub repository में commit न करें।** इन्हें GitHub → Settings → Secrets and variables → Actions में रखें.
@@ -63,4 +62,4 @@ GitHub-hosted runner सीधे Android phone storage में file नही
 
 ## Quality and free-tier notes
 
-Workflow Python compile checks और unit tests चलाता है। Gemini, image services, Edge TTS और GitHub Actions की free limits बदल सकती हैं; पूरी तरह unlimited/free operation की guarantee नहीं है। हर image की license/source जानकारी जहाँ उपलब्ध हो `output/visual_credits.json` में रखी जाती है; publish से पहले image rights और source license जाँचें.
+Workflow Python compile checks और unit tests चलाता है। Gemini, image services, Edge TTS और GitHub Actions की free limits बदल सकती हैं; पूरी तरह unlimited/free operation की guarantee नहीं है। Cloudflare-generated images के लिए कोई Wikimedia/Google source credits नहीं होते. Cloudflare Workers AI की उपलब्धता और account limits लागू होंगी.
