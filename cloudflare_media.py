@@ -12,7 +12,7 @@ def generate_cloudflare_images(data, work_dir):
     endpoint = os.getenv("CLOUDFLARE_IMAGE_WORKER_URL", "").strip()
     token = os.getenv("CLOUDFLARE_IMAGE_TOKEN", "").strip()
     if not endpoint or not token:
-        print("Cloudflare Workers AI not configured; using existing image providers.")
+        print("ERROR: Cloudflare Workers AI is not configured; no external image provider is allowed. Scene placeholders will be used.")
         return []
 
     work = Path(work_dir)
@@ -64,10 +64,10 @@ def generate_cloudflare_images(data, work_dir):
                     print(f"Cloudflare image {index}: network timeout; retrying once in 3s ({exc})")
                     time.sleep(3)
                     continue
-                print(f"WARNING: Cloudflare image {index} failed after 2 attempts; fallback provider will be used: {exc}")
+                print(f"WARNING: Cloudflare image {index} failed after 2 attempts; designed placeholder will be used: {exc}")
             except Exception as exc:
                 path.unlink(missing_ok=True)
-                print(f"WARNING: Cloudflare image {index} failed; fallback provider will be used: {exc}")
+                print(f"WARNING: Cloudflare image {index} failed; designed placeholder will be used: {exc}")
                 break
         if saved_path is None: image_paths.append(None)
     image_paths.extend([None] * max(0, min(len(queries), 6) - len(image_paths)))
