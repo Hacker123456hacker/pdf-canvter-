@@ -584,7 +584,7 @@ def youtube_upload(video,data,c,thumbnail=None):
         token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
     ch=c["channel"]
-    privacy=ch.get("privacy_status", "private").strip().lower()
+    privacy="public"  # Always publish generated videos publicly, regardless of local config.
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("channel.privacy_status must be private, unlisted, or public")
     body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":privacy,"selfDeclaredMadeForKids":False}}
