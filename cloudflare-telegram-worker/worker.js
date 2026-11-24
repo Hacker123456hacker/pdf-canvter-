@@ -1,7 +1,8 @@
 /**
  * Bhakti Telegram webhook controller.
  * Required Worker secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID,
- * GITHUB_TOKEN (fine-grained PAT with Actions read/write), WEBHOOK_SECRET.
+ * TELEGRAM_USER_ID, GITHUB_TOKEN (fine-grained PAT with Actions read/write),
+ * WEBHOOK_SECRET.
  */
 const OWNER = "Hacker123456hacker";
 const REPO = "pdf-canvter-";
@@ -94,8 +95,13 @@ async function lastVideo(env) {
 async function handleUpdate(env, update) {
   const message = update.message;
   if (!message || !message.text) return;
-  const chatId = String(message.chat?.id ?? "");
-  if (chatId !== String(env.TELEGRAM_CHAT_ID)) return;
+
+  // Defense in depth: only the configured owner in a one-to-one private chat.
+  if (message.chat?.type !== "private") return;
+  if (String(message.chat?.id ?? "") !== String(env.TELEGRAM_CHAT_ID)) return;
+  if (String(message.from?.id ?? "") !== String(env.TELEGRAM_USER_ID)) return;
+  if (message.from?.is_bot) return;
+
   const command = message.text.trim().split(/\s+/)[0].toLowerCase().split("@")[0];
   const help = [
     "🤖 Bhakti YouTube Control",
@@ -106,7 +112,7 @@ async function handleUpdate(env, update) {
     "/lastvideo — latest successful run/artifact",
     "/help — show commands",
     "",
-    "Commands are accepted only from your configured Telegram chat.",
+    "Private owner-only control is enabled.",
   ].join("\n");
 
   try {
@@ -148,6 +154,12 @@ export default {
       return json({ error: "Unauthorized" }, 401);
     }
 
+    // Fail closed if any identity/credential secret is missing.
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID ||
+        !env.TELEGRAM_USER_ID || !env.GITHUB_TOKEN) {
+      return json({ error: "Server configuration incomplete" }, 503);
+    }
+
     let update;
     try {
       update = await request.json();
@@ -155,7 +167,6 @@ export default {
       return json({ error: "Invalid JSON" }, 400);
     }
 
-    // Telegram receives an immediate acknowledgement; command work continues safely.
     ctx.waitUntil(handleUpdate(env, update));
     return json({ ok: true });
   },
