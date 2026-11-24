@@ -128,3 +128,26 @@ class SceneAlignmentTests(unittest.TestCase):
             finally:
                 agent.WORK = original_work
                 for p in Path(tmp).glob("slide_*.jpg"): p.unlink(missing_ok=True)
+
+
+class RegressionTests(unittest.TestCase):
+    def test_whitespace_patterns_collapse_and_split(self):
+        import re
+        self.assertEqual(re.sub(r"\\s+", " ", "one   two"), "one two")
+        self.assertEqual(re.split(r"(?<=[.!?])\\s+", "First. Second"), ["First.", "Second"])
+
+    def test_empty_gemini_candidate_text_uses_fallback_error_not_index_error(self):
+        from unittest.mock import Mock, patch
+        import agent
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"candidates": [{"content": {"parts": []}}]}
+        env = {"GEMINI_API_KEY": "dummy", "GEMINI_API_KEY_2": "", "GEMINI_API_KEY_3": "", "GEMINI_MODEL": "test-model", "GEMINI_FALLBACK_MODELS": ""}
+        with patch.dict("os.environ", env, clear=False), patch("agent.requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "generation failed"):
+                agent.gemini("test")
+
+    def test_config_example_defaults_to_private_upload(self):
+        import json
+        config = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["channel"]["privacy_status"], "private")
