@@ -63,3 +63,19 @@ GitHub-hosted runner सीधे Android phone storage में file नही
 ## Quality and free-tier notes
 
 Workflow Python compile checks और unit tests चलाता है। Gemini, image services, Edge TTS और GitHub Actions की free limits बदल सकती हैं; पूरी तरह unlimited/free operation की guarantee नहीं है। Cloudflare-generated images के लिए कोई Wikimedia/Google source credits नहीं होते. Cloudflare Workers AI की उपलब्धता और account limits लागू होंगी.
+
+## Telegram control panel
+
+After enabling GitHub Actions, the Telegram controller checks for owner commands every 5 minutes (GitHub may delay scheduled runs). It uses the existing `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` Actions secrets; commands from any other chat are ignored.
+
+Commands:
+- `/help` — list commands
+- `/status` — latest workflow run status
+- `/run` — start a Bhakti video workflow
+- `/pause` — disable the video workflow, including its schedule
+- `/resume` — re-enable the video workflow and schedule
+- `/lastvideo` — link to the latest successful workflow run/artifact
+
+The controller uses the automatically provided GitHub Actions token with repository-scoped `contents:write` and `actions:write` permissions; no extra GitHub PAT is required. It stores only the Telegram update offset in `.telegram-control-state.json`. Keep the repository's Actions secrets private.
+
+**Limitations:** This is scheduled polling, not an instant webhook; commands can take several minutes. `/lastvideo` currently links to the latest successful run/artifact and does not yet extract the YouTube watch URL. Pausing disables the whole video workflow, including manual runs, but leaves the Telegram controller active so `/resume` still works.
