@@ -8,12 +8,15 @@ Create a Cloudflare Worker named `bhakti-telegram-control` and deploy `worker.js
 
 ## 2. Add Worker secrets
 
-In Worker → Settings → Variables and Secrets, add these as **Secrets**, not plain variables:
+In Worker → Settings → Variables and Secrets, add all of these as **Secrets**, not plain variables:
 
 - `TELEGRAM_BOT_TOKEN`: same bot token currently stored in GitHub Actions.
-- `TELEGRAM_CHAT_ID`: same allowed Telegram chat ID.
+- `TELEGRAM_CHAT_ID`: your one-to-one private chat ID with the bot.
+- `TELEGRAM_USER_ID`: your own numeric Telegram user ID (the `from.id` value from a message you send).
 - `GITHUB_TOKEN`: a fine-grained GitHub Personal Access Token restricted to this repository, with **Actions: Read and write** permission. It is needed for workflow status/dispatch/enable/disable.
 - `WEBHOOK_SECRET`: a newly generated random string, 32–64 characters, using only A–Z, a–z, 0–9, underscore or hyphen.
+
+**Owner-only security:** the Worker accepts commands only when the update is from a private one-to-one chat, the chat ID exactly matches `TELEGRAM_CHAT_ID`, and the sender's numeric ID exactly matches `TELEGRAM_USER_ID`. It rejects group/supergroup messages and all other senders. Missing identity secrets cause the Worker to fail closed.
 
 Never commit these values or paste them into chat.
 
@@ -40,7 +43,8 @@ First test `/help`, `/status`, `/lastvideo`, and `/run` (only if you intend to s
 
 ## Security notes
 
-- The Worker rejects Telegram updates unless the Telegram webhook secret header matches.
-- It accepts commands only from the configured chat ID.
+- The Worker rejects updates unless Telegram's webhook secret header matches.
+- It accepts only your configured private chat ID **and** your configured numeric Telegram user ID.
+- Group messages and commands from other accounts are ignored without running any action.
 - GitHub token is scoped to this repository and Actions permissions only.
-- Do not expose the Worker secrets or webhook URL registration command.
+- Do not expose the Worker secrets or webhook registration command.
