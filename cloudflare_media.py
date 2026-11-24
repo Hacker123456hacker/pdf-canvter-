@@ -20,11 +20,20 @@ def generate_cloudflare_images(data, work_dir):
     queries = data.get("visual_queries") or [data.get("title", "documentary scene")]
     image_paths = []
     for index, query in enumerate(queries[:6], 1):
-        prompt = (
-            f"Photorealistic cinematic documentary photograph about {query}. "
-            "Accurate real-world details, professional natural lighting, clear main subject, "
-            "vertical 9:16 composition, no text, no captions, no watermark, no logos."
-        )
+        profile = str(data.get("video_profile", os.getenv("CONTENT_PROFILE", "bhakti"))).lower()
+        if profile == "bhakti":
+            prompt = (
+                f"Respectful devotional visual for a Hindi Hindu spirituality video about {query}. "
+                "Serene, culturally respectful, photorealistic cinematic scene; accurate traditional "
+                "Indian architecture, clothing and objects where relevant; warm natural lighting; "
+                "vertical portrait 9:16 framing; no text, captions, watermark, logos, or invented scripture."
+            )
+        else:
+            prompt = (
+                f"Photorealistic cinematic documentary photograph about {query}. "
+                "Accurate real-world details, professional natural lighting, clear main subject, "
+                "vertical portrait 9:16 composition, no text, captions, watermark, or logos."
+            )
         saved_path = None
         for attempt in range(1, 3):
             path = work / f"cloudflare_image_{index:02d}.jpg"
@@ -33,7 +42,7 @@ def generate_cloudflare_images(data, work_dir):
                 response = requests.post(
                     endpoint,
                     headers={"Authorization": f"Bearer {token}"},
-                    json={"prompt": prompt, "steps": 4},
+                    json={"prompt": prompt, "steps": 4, "width": 768, "height": 1344},
                     timeout=(10, 60),
                 )
                 if response.status_code in (408, 429, 500, 502, 503, 504):
