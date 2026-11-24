@@ -126,6 +126,33 @@ def openrouter_generate(prompt):
     return generated.strip()
 
 
+def groq_generate(prompt):
+    """Final text-generation fallback using Groq's OpenAI-compatible API."""
+    api_key = env("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("Groq fallback is not configured.")
+    model = env("GROQ_MODEL") or "llama-3.3-70b-versatile"
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        json={"model": model, "messages": [
+            {"role": "system", "content": "Return only valid JSON and follow the requested schema."},
+            {"role": "user", "content": prompt}], "temperature": 0.7},
+        timeout=(15, 120),
+    )
+    if not response.ok:
+        detail = re.sub(r"(?i)(gsk_[A-Za-z0-9_-]{12,})", "[REDACTED_API_KEY]", response.text[:800])
+        raise RuntimeError("Groq HTTP " + str(response.status_code) + ": " + detail)
+    body = response.json()
+    choices = body.get("choices") or []
+    message = (choices[0].get("message") or {}) if choices else {}
+    generated = message.get("content")
+    if not isinstance(generated, str) or not generated.strip():
+        raise RuntimeError("Groq returned an empty response")
+    print("Groq fallback model used: " + str(body.get("model") or model))
+    return generated.strip()
+
+
 def parse_gemini_json(raw):
     """Parse Gemini JSON despite optional markdown fences or surrounding prose."""
     text = (raw or "").strip()
@@ -180,7 +207,13 @@ Do not make medical/legal/financial claims or sensational misinformation.'''
         if not env("OPENROUTER_API_KEY"):
             raise
         print("Gemini options exhausted (" + type(gemini_error).__name__ + "); trying OpenRouter.")
-        raw_content = openrouter_generate(prompt)
+        try:
+            raw_content = openrouter_generate(prompt)
+        except Exception as openrouter_error:
+            if not env("GROQ_API_KEY"):
+                raise
+            print("OpenRouter failed (" + type(openrouter_error).__name__ + "); trying Groq.")
+            raw_content = groq_generate(prompt)
     data = parse_gemini_json(raw_content)
     data["video_profile"] = profile
     data["youtube_category_id"] = category_id
