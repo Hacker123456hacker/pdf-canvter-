@@ -150,12 +150,12 @@ class RegressionTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "generation failed"):
                 agent.gemini("test")
 
-    def test_config_example_defaults_to_private_upload(self):
+    def test_config_example_defaults_to_public_upload(self):
         import json
         config = json.loads(
             (Path(__file__).resolve().parents[1] / "config.example.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(config["channel"]["privacy_status"], "private")
+        self.assertEqual(config["channel"]["privacy_status"], "public")
 
 
 if __name__ == "__main__":
