@@ -57,6 +57,10 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL }}
           YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -67,8 +71,8 @@ jobs:
           GOOGLE_CSE_ID: ${{ secrets.GOOGLE_CSE_ID }}
         run: |
           set -euo pipefail
-          if [ -z "${GEMINI_API_KEY:-}${GEMINI_API_KEY_2:-}${GEMINI_API_KEY_3:-}" ]; then
-            echo "::error::Add at least one Gemini key in GitHub Actions Secrets."
+          if [ -z "${GEMINI_API_KEY:-}${GEMINI_API_KEY_2:-}${GEMINI_API_KEY_3:-}${OPENROUTER_API_KEY:-}${GROQ_API_KEY:-}" ]; then
+            echo "::error::Add at least one Gemini key, OPENROUTER_API_KEY, or GROQ_API_KEY in GitHub Actions Secrets."
             exit 1
           fi
 
@@ -118,6 +122,10 @@ jobs:
               "GEMINI_API_KEY": os.environ.get("GEMINI_API_KEY", ""),
               "GEMINI_API_KEY_2": os.environ.get("GEMINI_API_KEY_2", ""),
               "GEMINI_API_KEY_3": os.environ.get("GEMINI_API_KEY_3", ""),
+              "OPENROUTER_API_KEY": os.environ.get("OPENROUTER_API_KEY", ""),
+              "OPENROUTER_MODEL": os.environ.get("OPENROUTER_MODEL", ""),
+              "GROQ_API_KEY": os.environ.get("GROQ_API_KEY", ""),
+              "GROQ_MODEL": os.environ.get("GROQ_MODEL", ""),
               "CLOUDFLARE_IMAGE_WORKER_URL": os.environ.get("CLOUDFLARE_IMAGE_WORKER_URL", ""),
               "CLOUDFLARE_IMAGE_TOKEN": os.environ.get("CLOUDFLARE_IMAGE_TOKEN", ""),
               "GOOGLE_CSE_API_KEY": os.environ.get("GOOGLE_CSE_API_KEY", ""),

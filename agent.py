@@ -96,6 +96,63 @@ def gemini(prompt):
         f"({', '.join(models)}). Last error: {last_error}"
     ) from last_error
 
+def openrouter_generate(prompt):
+    """Last-resort text generation through OpenRouter when Gemini options fail."""
+    api_key = env("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OpenRouter fallback is not configured.")
+    model = env("OPENROUTER_MODEL") or "openrouter/auto"
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json",
+                 "HTTP-Referer": "https://github.com", "X-Title": "Bhakti Video Automation"},
+        json={"model": model, "messages": [
+            {"role": "system", "content": "Return only valid JSON and follow the requested schema."},
+            {"role": "user", "content": prompt}], "temperature": 0.7},
+        timeout=(15, 120),
+    )
+    if not response.ok:
+        detail = re.sub(r"(?i)(sk-or-v1-[A-Za-z0-9_-]{12,})", "[REDACTED_API_KEY]", response.text[:800])
+        raise RuntimeError("OpenRouter HTTP " + str(response.status_code) + ": " + detail)
+    body = response.json()
+    choices = body.get("choices") or []
+    message = (choices[0].get("message") or {}) if choices else {}
+    generated = message.get("content")
+    if isinstance(generated, list):
+        generated = "".join(str(part.get("text", "")) for part in generated if isinstance(part, dict))
+    if not isinstance(generated, str) or not generated.strip():
+        raise RuntimeError("OpenRouter returned an empty response")
+    print("OpenRouter fallback model used: " + str(body.get("model") or model))
+    return generated.strip()
+
+
+def groq_generate(prompt):
+    """Final text-generation fallback using Groq's OpenAI-compatible API."""
+    api_key = env("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("Groq fallback is not configured.")
+    model = env("GROQ_MODEL") or "llama-3.3-70b-versatile"
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+        json={"model": model, "messages": [
+            {"role": "system", "content": "Return only valid JSON and follow the requested schema."},
+            {"role": "user", "content": prompt}], "temperature": 0.7},
+        timeout=(15, 120),
+    )
+    if not response.ok:
+        detail = re.sub(r"(?i)(gsk_[A-Za-z0-9_-]{12,})", "[REDACTED_API_KEY]", response.text[:800])
+        raise RuntimeError("Groq HTTP " + str(response.status_code) + ": " + detail)
+    body = response.json()
+    choices = body.get("choices") or []
+    message = (choices[0].get("message") or {}) if choices else {}
+    generated = message.get("content")
+    if not isinstance(generated, str) or not generated.strip():
+        raise RuntimeError("Groq returned an empty response")
+    print("Groq fallback model used: " + str(body.get("model") or model))
+    return generated.strip()
+
+
 def parse_gemini_json(raw):
     """Parse Gemini JSON despite optional markdown fences or surrounding prose."""
     text = (raw or "").strip()
@@ -144,7 +201,20 @@ visual_queries must contain exactly the same number of concise English image-sea
 Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
 
-    data = parse_gemini_json(gemini(prompt))
+    try:
+        raw_content = gemini(prompt)
+    except Exception as gemini_error:
+        if not env("OPENROUTER_API_KEY"):
+            raise
+        print("Gemini options exhausted (" + type(gemini_error).__name__ + "); trying OpenRouter.")
+        try:
+            raw_content = openrouter_generate(prompt)
+        except Exception as openrouter_error:
+            if not env("GROQ_API_KEY"):
+                raise
+            print("OpenRouter failed (" + type(openrouter_error).__name__ + "); trying Groq.")
+            raw_content = groq_generate(prompt)
+    data = parse_gemini_json(raw_content)
     data["video_profile"] = profile
     data["youtube_category_id"] = category_id
     # Gemini sometimes ignores the requested word count. Cap narration so Hindi
@@ -369,38 +439,74 @@ def verify_video_quality(path, c):
     return report
 
 
+def _srt_timestamp(seconds):
+    milliseconds = max(0, int(round(seconds * 1000)))
+    hours, remainder = divmod(milliseconds, 3600000)
+    minutes, remainder = divmod(remainder, 60000)
+    secs, millis = divmod(remainder, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def write_approximate_srt(text, duration, target):
+    """Create sentence-level captions for fallback speech without word timings."""
+    sentences = [x.strip() for x in re.split(r"(?<=[।!?])\s+|(?<=[.!?])\s+", text) if x.strip()] or [text.strip()]
+    total = sum(max(1, len(x)) for x in sentences)
+    cursor = 0.0
+    rows = []
+    for index, sentence in enumerate(sentences, 1):
+        finish = duration if index == len(sentences) else cursor + duration * max(1, len(sentence)) / total
+        rows.extend([str(index), _srt_timestamp(cursor) + " --> " + _srt_timestamp(finish), sentence, ""])
+        cursor = finish
+    Path(target).write_text("\n".join(rows), encoding="utf-8")
+    return bool(rows)
+
+
 def tts(text,c):
-    audio=WORK/"voice.mp3"
-    vtt=WORK/"voice.srt"
-    srt=WORK/"voice.srt"
+    audio=WORK/"voice.mp3"; vtt=WORK/"voice.srt"; srt=WORK/"voice.srt"
     voice=c["video"].get("voice","hi-IN-SwaraNeural"); rate=c["video"].get("tts_rate","+0%")
-    words=len(text.split())
+    reason="Edge TTS did not return usable media"
     for attempt in range(1,4):
         audio.unlink(missing_ok=True); vtt.unlink(missing_ok=True); srt.unlink(missing_ok=True)
-        cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,
-             "--write-media",str(audio),"--write-subtitles",str(vtt)]
-        r=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
-        if r.returncode:
-            reason=(r.stderr or r.stdout)[-1500:]
-            print(f"Hindi TTS attempt {attempt}/3 failed: {reason}")
-        elif audio.exists() and audio.stat().st_size > 10_000 and vtt.exists():
+        cmd=[sys.executable,"-m","edge_tts","--voice",voice,"--rate",rate,"--text",text,"--write-media",str(audio),"--write-subtitles",str(vtt)]
+        try:
+            r=subprocess.run(cmd,capture_output=True,text=True,timeout=180)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            r=None; reason=type(exc).__name__ + ": " + str(exc)
+        if r is not None and r.returncode:
+            reason=(r.stderr or r.stdout)[-1200:]
+            print("Hindi Edge TTS attempt " + str(attempt) + "/3 failed: " + reason)
+        elif r is not None and audio.exists() and audio.stat().st_size > 10000 and vtt.exists():
             try:
-                seconds=media_duration(audio)
-                captions_ok=vtt_to_srt(vtt,srt)
+                seconds=media_duration(audio); captions_ok=vtt_to_srt(vtt,srt)
             except Exception as exc:
-                seconds=0; captions_ok=False
-                print(f"Hindi TTS/subtitle validation failed: {exc}")
-            print(f"Hindi TTS duration: {seconds:.2f}s for {words} words; subtitles={'ready' if captions_ok else 'missing'}")
+                seconds=0; captions_ok=False; print("Edge TTS validation failed: " + str(exc))
             if 25 <= seconds <= 65 and captions_ok and srt.stat().st_size > 20:
+                print("Hindi Edge TTS succeeded: %.2fs" % seconds)
                 return audio,srt
             reason="invalid audio duration or missing/empty timed subtitles"
-            print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
-        else:
+        elif r is not None:
             reason="audio or subtitle file missing/suspiciously small"
-            print(f"Hindi TTS attempt {attempt}/3 rejected: {reason}")
-        if attempt < 3:
-            time.sleep(3 * attempt)
-    raise RuntimeError("Hindi TTS did not produce valid 25-65 second audio and subtitles after 3 attempts. "+str(reason))
+        if attempt < 3: time.sleep(3 * attempt)
+
+    # Edge TTS can return HTTP 403 from hosted runners; use gTTS as a secondary provider.
+    audio.unlink(missing_ok=True); vtt.unlink(missing_ok=True); srt.unlink(missing_ok=True)
+    try:
+        from gtts import gTTS
+        print("Trying secondary Hindi TTS provider (gTTS).")
+        gTTS(text=text, lang="hi", slow=False).save(str(audio))
+        if not audio.exists() or audio.stat().st_size <= 10000:
+            raise RuntimeError("gTTS audio missing or too small")
+        seconds=media_duration(audio)
+        if not 25 <= seconds <= 65:
+            raise RuntimeError("gTTS duration %.2fs is outside 25-65 seconds" % seconds)
+        write_approximate_srt(text, seconds, srt)
+        if not srt.exists() or srt.stat().st_size <= 20:
+            raise RuntimeError("gTTS captions could not be created")
+        print("Secondary Hindi TTS succeeded: %.2fs" % seconds)
+        return audio,srt
+    except Exception as exc:
+        audio.unlink(missing_ok=True); srt.unlink(missing_ok=True)
+        raise RuntimeError("Hindi narration failed: Edge TTS exhausted (" + str(reason) + "); gTTS fallback failed (" + type(exc).__name__ + ": " + str(exc) + ")") from exc
 
 
 def render(slides,audio,c,subtitles_path=None,video_clip=None):
