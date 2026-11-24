@@ -101,7 +101,7 @@ def openrouter_generate(prompt):
     api_key = env("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OpenRouter fallback is not configured.")
-    model = env("OPENROUTER_MODEL", "openrouter/auto")
+    model = env("OPENROUTER_MODEL") or "openrouter/auto"
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json",
