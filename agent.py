@@ -547,7 +547,9 @@ def render(slides,audio,c,subtitles_path=None,video_clip=None):
             f.write("file '" + segment.as_posix() + "'\n")
     # Burn readable Hindi captions into the final video using FFmpeg/libass.
     subtitle_file=Path(subtitles_path).resolve().as_posix().replace(":", r"\:").replace("'", r"\'")
+    # Hold the last real frame across tiny concat/narration tail gaps to prevent a blank ending.
     subtitle_filter=(
+        "tpad=stop_mode=clone:stop_duration=2,"
         "subtitles=filename='" + subtitle_file + "':"
         "force_style='FontName=Noto Sans Devanagari,FontSize=18,"
         "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
