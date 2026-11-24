@@ -79,3 +79,12 @@ Commands:
 The controller uses the automatically provided GitHub Actions token with repository-scoped `contents:write` and `actions:write` permissions; no extra GitHub PAT is required. It stores only the Telegram update offset in `.telegram-control-state.json`. Keep the repository's Actions secrets private.
 
 **Limitations:** This is scheduled polling, not an instant webhook; commands can take several minutes. `/lastvideo` currently links to the latest successful run/artifact and does not yet extract the YouTube watch URL. Pausing disables the whole video workflow, including manual runs, but leaves the Telegram controller active so `/resume` still works.
+
+
+## Telegram command security
+
+For a private one-person bot chat, set the existing `TELEGRAM_CHAT_ID` secret. If the bot is used in a group, also add the numeric Telegram account ID of the owner as the `TELEGRAM_USER_ID` GitHub Actions secret. When configured, commands from other members of the allowed chat are ignored. Never paste bot tokens or GitHub tokens into Telegram messages or commit them to the repository.
+
+## Upload privacy
+
+The sample configuration defaults YouTube uploads to **private**. Change `channel.privacy_status` in your own untracked `config.json` only when you intentionally want `unlisted` or `public` publishing. The upload code validates this setting and does not silently accept unknown values.

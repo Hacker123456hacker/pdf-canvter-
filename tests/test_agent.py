@@ -8,9 +8,7 @@ from PIL import Image
 
 class GeminiResponseTests(unittest.TestCase):
     def test_parses_plain_json(self):
-        data = parse_gemini_json(
-            '{"title":"Test","narration":"नमस्ते","slides":["एक","दो"]}'
-        )
+        data = parse_gemini_json('{"title":"Test","narration":"नमस्ते","slides":["एक","दो"]}')
         self.assertEqual(data["title"], "Test")
         self.assertEqual(data["slides"], ["एक", "दो"])
 
@@ -26,7 +24,6 @@ class GeminiResponseTests(unittest.TestCase):
     def test_rejects_invalid_slides(self):
         with self.assertRaisesRegex(ValueError, "slides"):
             parse_gemini_json('{"title":"Test","narration":"Voice","slides":"not a list"}')
-
 
 
 class VideoQualityTests(unittest.TestCase):
@@ -86,10 +83,9 @@ class SubtitleTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             source = Path(tmp) / "empty.vtt"
             target = Path(tmp) / "empty.srt"
-            source.write_text("WEBVTT\\n\\n", encoding="utf-8")
+            source.write_text("WEBVTT\n\n", encoding="utf-8")
             self.assertFalse(vtt_to_srt(source, target))
             self.assertEqual(target.read_text(encoding="utf-8"), "")
-
 
 
 class ThumbnailTests(unittest.TestCase):
@@ -106,12 +102,8 @@ class ThumbnailTests(unittest.TestCase):
                 thumb.unlink(missing_ok=True)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class SceneAlignmentTests(unittest.TestCase):
     def test_missing_scene_image_does_not_reuse_another_scenes_photo(self):
-        from unittest.mock import patch
         import agent
         with TemporaryDirectory() as tmp:
             original_work = agent.WORK
@@ -119,7 +111,11 @@ class SceneAlignmentTests(unittest.TestCase):
             try:
                 first = Path(tmp) / "first.jpg"
                 Image.new("RGB", (80, 120), (255, 0, 0)).save(first)
-                scenes = make_slides(["scene one", "scene two"], {"video": {"width": 80, "height": 120}}, [first, None])
+                scenes = make_slides(
+                    ["scene one", "scene two"],
+                    {"video": {"width": 80, "height": 120}},
+                    [first, None],
+                )
                 self.assertEqual(len(scenes), 2)
                 with Image.open(scenes[0]) as a, Image.open(scenes[1]) as b:
                     self.assertGreater(a.getpixel((40, 60))[0], 240)
@@ -127,4 +123,40 @@ class SceneAlignmentTests(unittest.TestCase):
                     self.assertNotEqual(b.getpixel((40, 60)), (255, 0, 0))
             finally:
                 agent.WORK = original_work
-                for p in Path(tmp).glob("slide_*.jpg"): p.unlink(missing_ok=True)
+                for p in Path(tmp).glob("slide_*.jpg"):
+                    p.unlink(missing_ok=True)
+
+
+class RegressionTests(unittest.TestCase):
+    def test_whitespace_patterns_collapse_and_split(self):
+        import re
+        self.assertEqual(re.sub(r"\s+", " ", "one   two"), "one two")
+        self.assertEqual(re.split(r"(?<=[.!?])\s+", "First. Second"), ["First.", "Second"])
+
+    def test_empty_gemini_candidate_text_uses_fallback_error_not_index_error(self):
+        from unittest.mock import Mock, patch
+        import agent
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"candidates": [{"content": {"parts": []}}]}
+        env = {
+            "GEMINI_API_KEY": "dummy",
+            "GEMINI_API_KEY_2": "",
+            "GEMINI_API_KEY_3": "",
+            "GEMINI_MODEL": "test-model",
+            "GEMINI_FALLBACK_MODELS": "",
+        }
+        with patch.dict("os.environ", env, clear=False), patch("agent.requests.post", return_value=response):
+            with self.assertRaisesRegex(RuntimeError, "generation failed"):
+                agent.gemini("test")
+
+    def test_config_example_defaults_to_private_upload(self):
+        import json
+        config = json.loads(
+            (Path(__file__).resolve().parents[1] / "config.example.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(config["channel"]["privacy_status"], "private")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -11,6 +11,7 @@ API = "https://api.github.com"
 REPO = os.environ["GITHUB_REPOSITORY"]
 BOT = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT = str(os.environ["TELEGRAM_CHAT_ID"])
+OWNER_USER_ID = str(os.getenv("TELEGRAM_USER_ID", "")).strip()
 GH = os.environ["GITHUB_TOKEN"]
 WORKFLOW = "auto-youtube.yml"
 STATE_PATH = Path(".telegram-control-state.json")
@@ -166,15 +167,19 @@ def main():
         state["offset"] = max(state["offset"], int(update.get("update_id", 0)) + 1)
         message = update.get("message") or {}
         chat_id = str((message.get("chat") or {}).get("id", ""))
+        sender_id = str((message.get("from") or {}).get("id", ""))
         text = (message.get("text") or "").strip()
         if chat_id != CHAT or not text.startswith("/"):
+            continue
+        if OWNER_USER_ID and sender_id != OWNER_USER_ID:
+            print("Ignored Telegram command from non-owner sender.")
             continue
         try:
             handle(text)
         except Exception as exc:
             # Do not echo credentials or full request URLs into Telegram.
             reply("❌ Command execute नहीं हुआ: " + type(exc).__name__ + ". GitHub Actions/permissions जाँचें।")
-            print("Command failed:", type(exc).__name__, str(exc)[:500], file=sys.stderr)
+            print("Command failed:", type(exc).__name__, file=sys.stderr)
     if updates:
         save_state(state)
 
