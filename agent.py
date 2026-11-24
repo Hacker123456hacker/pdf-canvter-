@@ -42,12 +42,13 @@ def gemini(prompt):
     # Rotate through every configured key and model on quota, overload, auth, or network errors.
     for key_index, key in enumerate(keys, 1):
         for model in models:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             for attempt in range(1, 3):
                 try:
                     response = requests.post(
                         url,
                         json={"contents": [{"parts": [{"text": prompt}]}]},
+                        headers={"x-goog-api-key": key},
                         timeout=(12, 75),
                     )
                     response.raise_for_status()
@@ -57,7 +58,14 @@ def gemini(prompt):
                         feedback = body.get("promptFeedback", {})
                         raise RuntimeError(f"Gemini {model} returned no candidate: {feedback or body}")
                     print(f"Gemini key slot {key_index}, model used: {model}")
-                    return candidates[0]["content"]["parts"][0]["text"]
+                    content = candidates[0].get("content") or {}
+                    parts = content.get("parts") or []
+                    generated = next((part.get("text") for part in parts if isinstance(part, dict) and part.get("text")), None)
+                    if not generated:
+                        last_error = RuntimeError(f"Gemini {model} returned an empty or blocked candidate")
+                        print(f"Gemini key slot {key_index}, model {model} returned no text; switching fallback.")
+                        break
+                    return generated
                 except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
                     last_error = exc
                     status = exc.response.status_code if isinstance(exc, requests.HTTPError) and exc.response is not None else None
@@ -111,7 +119,7 @@ def parse_gemini_json(raw):
 
 def make_content(c):
     lang=c["content"].get("language","hi")
-    profile=env("CONTENT_PROFILE","tech").lower()
+    profile=env("CONTENT_PROFILE","bhakti").lower()
     if profile == "bhakti":
         niche="Hindi devotional and spiritual content: bhajans, aarti, mantra meaning, festival traditions, stories from Hindu scriptures and practical values"
         profile_rules="""Keep the tone respectful, peaceful and devotional. Choose a different bhakti topic each day: aarti, bhajan meaning, mantra meaning, festival tradition, or a short story/value from a Hindu scripture. Attribute scripture-based stories carefully; do not invent quotations, verses, miracles, historical facts, or claims. Do not present generated lyrics as traditional lyrics. Avoid asking viewers to pay, donate, or perform unsafe rituals."""
@@ -143,7 +151,7 @@ Do not make medical/legal/financial claims or sensational misinformation.'''
     # speech reliably fits the requested 30-60 second Shorts format.
     narration=data["narration"].strip()
     if len(narration.split()) > 120:
-        sentences=re.split(r"(?<=[।!?])\\s+", narration)
+        sentences=re.split(r"(?<=[।!?])\s+", narration)
         kept=[]; count=0
         for sentence in sentences:
             n=len(sentence.split())
@@ -225,7 +233,13 @@ def make_slides(slides,c,visual_paths=None):
             except Exception:
                 im=Image.new("RGB",(w,h),(12,18,32))
         else:
-            im=Image.new("RGB",(w,h),(12,18,32))
+            im=Image.new("RGB",(w,h),(28,38,62))
+            draw=ImageDraw.Draw(im)
+            for y in range(h):
+                shade=int(28 + 24*y/max(1,h-1))
+                draw.line((0,y,w,y), fill=(shade, shade+8, min(110,shade+38)))
+            draw.ellipse((w*0.12,h*0.18,w*0.88,h*0.62), outline=(180,150,95), width=max(3,w//180))
+            draw.text((w//2,h//2), f"Divya Vichar {i+1}", anchor="mm", font=font(max(28,w//24)), fill=(255,238,205))
         p=WORK/f"slide_{i:02d}.jpg"
         im.save(p,quality=90,optimize=True)
         paths.append(p)
@@ -299,7 +313,7 @@ def make_thumbnail(title, scene_path, c):
         draw.line((0, y, width, y), fill=(0, 0, 0, alpha))
     image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
     draw = ImageDraw.Draw(image)
-    title = re.sub(r"\\s+", " ", str(title)).strip()
+    title = re.sub(r"\s+", " ", str(title)).strip()
     words, lines, line = title.split(), [], ""
     for word in words:
         candidate = (line + " " + word).strip()
@@ -461,7 +475,9 @@ def youtube_upload(video,data,c,thumbnail=None):
         token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
     ch=c["channel"]
-    privacy=ch.get("privacy_status","private")
+    privacy=ch.get("privacy_status", "private").strip().lower()
+    if privacy not in {"private", "unlisted", "public"}:
+        raise ValueError("channel.privacy_status must be private, unlisted, or public")
     body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":privacy,"selfDeclaredMadeForKids":False}}
     res=yt.videos().insert(part="snippet,status",body=body,media_body=MediaFileUpload(str(video),chunksize=-1,resumable=True)).execute()
     video_id=res.get("id")
