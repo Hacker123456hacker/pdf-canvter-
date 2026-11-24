@@ -130,8 +130,8 @@ class SceneAlignmentTests(unittest.TestCase):
 class RegressionTests(unittest.TestCase):
     def test_whitespace_patterns_collapse_and_split(self):
         import re
-        self.assertEqual(re.sub(r"\\s+", " ", "one   two"), "one two")
-        self.assertEqual(re.split(r"(?<=[.!?])\\s+", "First. Second"), ["First.", "Second"])
+        self.assertEqual(re.sub(r"\s+", " ", "one   two"), "one two")
+        self.assertEqual(re.split(r"(?<=[.!?])\s+", "First. Second"), ["First.", "Second"])
 
     def test_empty_gemini_candidate_text_uses_fallback_error_not_index_error(self):
         from unittest.mock import Mock, patch
