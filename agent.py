@@ -175,8 +175,10 @@ def parse_gemini_json(raw):
 
 
 def make_content(c):
-    lang=c["content"].get("language","hi")
     profile=env("CONTENT_PROFILE","bhakti").lower()
+    # Bhakti videos must always use natural Hindi written in Devanagari.
+    # English is reserved only for visual_queries, which are image-generation prompts.
+    lang = "Hindi written only in Devanagari script" if profile == "bhakti" else c["content"].get("language","hi")
     if profile == "bhakti":
         niche="Hindi devotional and spiritual content: bhajans, aarti, mantra meaning, festival traditions, stories from Hindu scriptures and practical values"
         profile_rules="""Keep the tone respectful, peaceful and devotional. Choose a different bhakti topic each day: aarti, bhajan meaning, mantra meaning, festival tradition, or a short story/value from a Hindu scripture. Attribute scripture-based stories carefully; do not invent quotations, verses, miracles, historical facts, or claims. Do not present generated lyrics as traditional lyrics. Avoid asking viewers to pay, donate, or perform unsafe rituals."""
@@ -190,14 +192,15 @@ def make_content(c):
     target_seconds=max(30,min(60,int(c["content"].get("duration_seconds",60))))
     prompt=f'''Create ONE original short-form YouTube video in {lang} for the niche: {niche}.
 Video profile: {profile}. {profile_rules}
+LANGUAGE RULE (MANDATORY): For the Bhakti profile, write title, description, tags, narration, and every slide caption entirely in natural Hindi using Devanagari script. Do not write these fields in English or Hinglish. Use simple spoken Hindi that Indian viewers can understand. Do not mix English words into Hindi sentences unless a proper name has no natural Hindi form. The ONLY field allowed to contain English is visual_queries, because it is used for image generation.
 No daily topic will be supplied, so choose a fresh, useful topic yourself; do not repeat a generic topic.
 Topic hint (optional): {seed or "none"}. Avoid: {avoid}.
 Target narration length: 30-60 seconds, ideally about 50-55 seconds.
-Write roughly 100-125 words in natural, conversational spoken {lang}; do not make it too brief.
+Write roughly 100-125 Hindi words in natural, conversational spoken Hindi; do not make it too brief.
 Start with a strong 2-second hook, explain the topic clearly, and finish with a memorable takeaway.
 Return ONLY valid JSON with keys title, description, tags, narration, slides, visual_queries.
-slides must contain 6-8 short scene captions in the exact order of the narration.
-visual_queries must contain exactly the same number of concise English image-search queries, one per scene, each only 2-5 concrete search terms.
+slides must contain 6-8 short Hindi scene captions in Devanagari, in the exact order of the narration.
+visual_queries must contain exactly the same number of concise English image-generation queries, one per scene, each only 2-5 concrete search terms.
 Ask for real photographs of the actual subject (not illustrations, icons, logos, text, or generic backgrounds).
 Do not make medical/legal/financial claims or sensational misinformation.'''
 
