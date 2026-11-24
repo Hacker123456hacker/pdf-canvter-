@@ -1,4 +1,4 @@
-name: Hindi TTS and Subtitle Render Smoke Test
+name: Hindi Media Render Smoke Test
 
 on:
   pull_request:
@@ -45,44 +45,41 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Generate real Hindi TTS, subtitles and MP4 (no API secrets or YouTube upload)
+      - name: Render MP4 with Hindi subtitles (offline; no external TTS service)
         run: |
           python - <<'PY'
+          import subprocess
           from pathlib import Path
           from PIL import Image, ImageDraw
-          from agent import tts, render, verify_video_quality
+          from agent import render, verify_video_quality
 
-          config = {
-              "video": {
-                  "width": 1080,
-                  "height": 1920,
-                  "fps": 24,
-                  "voice": "hi-IN-SwaraNeural",
-                  "tts_rate": "+0%"
-              }
-          }
-          narration = (
-              "नमस्कार। आज हम एक छोटी सी प्रेरणादायक बात समझेंगे। "
-              "जब भी मन में चिंता या उलझन हो, कुछ पल रुककर गहरी सांस लें। "
-              "अपने विचारों को शांत करें और फिर एक छोटा, सही कदम चुनें। "
-              "भगवद्गीता का एक महत्वपूर्ण संदेश है कि हमें अपने कर्म पर ध्यान देना चाहिए। "
-              "परिणाम की चिंता में अपना वर्तमान काम नहीं छोड़ना चाहिए। "
-              "हर दिन थोड़ा अच्छा प्रयास, धीरे धीरे बड़ा बदलाव ला सकता है। "
-              "अपने परिवार और आसपास के लोगों के साथ प्रेम और सम्मान से पेश आएं। "
-              "यही छोटी बातें जीवन को बेहतर बनाती हैं। धन्यवाद।"
-          )
+          config = {"video": {"width": 1080, "height": 1920, "fps": 24}}
           Path("output").mkdir(exist_ok=True)
           Path("work").mkdir(exist_ok=True)
-          audio, subtitles = tts(narration, config)
+
+          audio = Path("work/smoke_audio.wav")
+          subprocess.run([
+              "ffmpeg", "-y", "-f", "lavfi", "-i",
+              "sine=frequency=440:duration=40", "-c:a", "pcm_s16le", str(audio)
+          ], check=True, capture_output=True)
+
+          subtitles = Path("work/smoke_subtitles.srt")
+          subtitles.write_text(
+              "1\\n00:00:00,000 --> 00:00:08,000\\nनमस्कार। आज का भक्ति संदेश।\\n\\n"
+              "2\\n00:00:08,000 --> 00:00:18,000\\nमन को शांत और सकारात्मक रखें।\\n\\n"
+              "3\\n00:00:18,000 --> 00:00:30,000\\nअपने कर्म पर ध्यान दें।\\n\\n"
+              "4\\n00:00:30,000 --> 00:00:40,000\\nधन्यवाद।\\n",
+              encoding="utf-8",
+          )
+
           image = Image.new("RGB", (1080, 1920), (25, 42, 70))
           draw = ImageDraw.Draw(image)
           draw.text((90, 850), "भक्ति • सकारात्मक विचार", fill="white")
           slide = Path("work/smoke_slide.jpg")
           image.save(slide, quality=90)
+
           video = render([slide], audio, config, subtitles_path=subtitles)
           report = verify_video_quality(video, config)
-          if not subtitles.is_file() or subtitles.stat().st_size <= 20:
-              raise SystemExit("SRT subtitle file is missing or empty")
           print("MEDIA_SMOKE_TEST_PASSED", report)
           print("Generated MP4:", video)
           PY
