@@ -87,4 +87,4 @@ For a private one-person bot chat, set the existing `TELEGRAM_CHAT_ID` secret. I
 
 ## Upload privacy
 
-The sample configuration defaults YouTube uploads to **private**. Change `channel.privacy_status` in your own untracked `config.json` only when you intentionally want `unlisted` or `public` publishing. The upload code validates this setting and does not silently accept unknown values.
+All generated YouTube videos are uploaded with **public** visibility. The uploader enforces public publishing regardless of the local `config.json` privacy setting.
