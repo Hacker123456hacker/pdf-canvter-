@@ -10,6 +10,29 @@ on:
         options:
           - bhakti
         default: bhakti
+      topic:
+        description: "Optional custom Hindi Bhakti topic"
+        required: false
+        type: string
+      duration_seconds:
+        description: "Narration duration (30-60 seconds)"
+        required: false
+        type: string
+        default: "55"
+      voice:
+        description: "Edge TTS voice name"
+        required: false
+        type: string
+        default: "hi-IN-SwaraNeural"
+      privacy:
+        description: "YouTube visibility for this run"
+        required: false
+        type: choice
+        options:
+          - public
+          - unlisted
+          - private
+        default: public
   schedule:
     # 03:00 IST = 21:30 UTC (previous day): Bhakti
     - cron: '30 21 * * *'
@@ -144,6 +167,10 @@ jobs:
       - name: Generate and upload
         env:
           CONTENT_PROFILE: ${{ steps.profile.outputs.content_profile }}
+          VIDEO_TOPIC: ${{ inputs.topic }}
+          VIDEO_DURATION_SECONDS: ${{ inputs.duration_seconds }}
+          VIDEO_VOICE: ${{ inputs.voice }}
+          UPLOAD_PRIVACY: ${{ inputs.privacy }}
         run: python agent.py
       - name: Save generated video as artifact
         uses: actions/upload-artifact@v4
