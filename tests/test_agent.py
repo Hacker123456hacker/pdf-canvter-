@@ -183,3 +183,15 @@ class OpenRouterFallbackTests(unittest.TestCase):
         with patch.dict("os.environ", {"OPENROUTER_API_KEY": "dummy", "OPENROUTER_MODEL": "test/model"}, clear=False), patch("agent.requests.post", return_value=response):
             raw = agent.openrouter_generate("Return JSON")
         self.assertIn('"title":"Test"', raw)
+
+
+class GroqFallbackTests(unittest.TestCase):
+    def test_groq_extracts_chat_completion_text(self):
+        from unittest.mock import Mock, patch
+        import agent
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"model": "test-groq", "choices": [{"message": {"content": '{"title":"Test"}'}}]}
+        with patch.dict("os.environ", {"GROQ_API_KEY": "dummy", "GROQ_MODEL": "test-groq"}, clear=False), patch("agent.requests.post", return_value=response):
+            raw = agent.groq_generate("Return JSON")
+        self.assertIn('"title":"Test"', raw)
