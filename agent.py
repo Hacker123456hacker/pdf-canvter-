@@ -23,7 +23,23 @@ def env(name, default=""):
 def cfg():
     p = Path(env("CONFIG_FILE", str(ROOT / "config.json")))
     if not p.exists(): p = ROOT / "config.example.json"
-    return json.loads(p.read_text(encoding="utf-8"))
+    config = json.loads(p.read_text(encoding="utf-8"))
+    # Per-run Telegram overrides; empty values preserve repository defaults.
+    topic = env("VIDEO_TOPIC")
+    if topic:
+        config.setdefault("content", {})["topic_seed"] = topic[:240]
+    duration = env("VIDEO_DURATION_SECONDS")
+    if duration:
+        try:
+            config.setdefault("content", {})["duration_seconds"] = max(30, min(60, int(duration)))
+        except ValueError:
+            raise RuntimeError("VIDEO_DURATION_SECONDS must be an integer from 30 to 60")
+    voice = env("VIDEO_VOICE")
+    if voice:
+        if not re.fullmatch(r"[A-Za-z]{2,3}-[A-Za-z]{2,4}-[A-Za-z0-9_-]{2,40}", voice):
+            raise RuntimeError("VIDEO_VOICE has an invalid format")
+        config.setdefault("video", {})["voice"] = voice
+    return config
 
 
 def gemini(prompt):
@@ -586,7 +602,7 @@ def youtube_upload(video,data,c,thumbnail=None):
         token_path.write_text(creds.to_json(), encoding="utf-8")
     yt=build("youtube","v3",credentials=creds)
     ch=c["channel"]
-    privacy="public"  # Always publish generated videos publicly, regardless of local config.
+    privacy=env("UPLOAD_PRIVACY", "public").lower() or "public"
     if privacy not in {"private", "unlisted", "public"}:
         raise ValueError("channel.privacy_status must be private, unlisted, or public")
     body={"snippet":{"title":data["title"],"description":data.get("description",""),"tags":data.get("tags",[]),"categoryId":str(data.get("youtube_category_id",ch.get("category_id","27"))),"defaultLanguage":ch.get("language","hi")},"status":{"privacyStatus":privacy,"selfDeclaredMadeForKids":False}}
