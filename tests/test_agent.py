@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from agent import make_slides, make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt
+from agent import make_slides, make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt, write_approximate_srt
 from PIL import Image
 
 
@@ -160,3 +160,26 @@ class RegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FallbackSubtitleTests(unittest.TestCase):
+    def test_approximate_srt_covers_audio_end(self):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "fallback.srt"
+            self.assertTrue(write_approximate_srt("पहला वाक्य। दूसरा वाक्य।", 30.0, target))
+            data = target.read_text(encoding="utf-8")
+            self.assertIn("00:00:30,000", data)
+            self.assertIn("दूसरा वाक्य।", data)
+
+
+class OpenRouterFallbackTests(unittest.TestCase):
+    def test_extracts_chat_completion_text(self):
+        from unittest.mock import Mock, patch
+        import agent
+        response = Mock()
+        response.ok = True
+        response.json.return_value = {"model": "test/model", "choices": [{"message": {"content": '{"title":"Test"}'}}]}
+        with patch.dict("os.environ", {"OPENROUTER_API_KEY": "dummy", "OPENROUTER_MODEL": "test/model"}, clear=False), patch("agent.requests.post", return_value=response):
+            raw = agent.openrouter_generate("Return JSON")
+        self.assertIn('"title":"Test"', raw)
