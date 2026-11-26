@@ -88,3 +88,18 @@ For a private one-person bot chat, set the existing `TELEGRAM_CHAT_ID` secret. I
 ## Upload privacy
 
 All generated YouTube videos are uploaded with **public** visibility. The uploader enforces public publishing regardless of the local `config.json` privacy setting.
+
+
+## Topic-matched background music
+
+Add only instrumental tracks that you are licensed to use (recommended: YouTube Studio → Audio Library; choose **Attribution not required** where possible). Place files in these folders:
+
+- `assets/music/krishna/` — Krishna/Radha/Geeta topics
+- `assets/music/shiva/` — Shiva/Mahadev topics
+- `assets/music/ram/` — Ramayana/Ram topics
+- `assets/music/hanuman/` — Hanuman topics
+- `assets/music/devi/` — Devi/Durga topics
+- `assets/music/meditation/` — mantra/meditation/prayer topics
+- `assets/music/general/` — fallback devotional instrumentals
+
+Supported formats: MP3, WAV, M4A, AAC, OGG and FLAC. The generator detects topic keywords and chooses a track from the matching folder (then the general folder). Background music is mixed at 7% volume, looped/trimmed to narration length, and faded at the beginning/end. If no matching or general track is present, the video still renders with narration only. The repository does not include third-party music files; add tracks only after checking their license and attribution terms.
