@@ -548,12 +548,18 @@ def select_background_music(data):
     category = next((name for name, words in topic_rules if any(word in haystack for word in words)), "general")
 
     extensions = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
-    candidates = sorted(
-        path for folder in (music_root / category, music_root / "general")
-        if folder.is_dir()
-        for path in folder.iterdir()
-        if path.is_file() and path.suffix.lower() in extensions
-    )
+    def tracks_in(folder):
+        if not folder.is_dir():
+            return []
+        return sorted(
+            path for path in folder.iterdir()
+            if path.is_file() and path.suffix.lower() in extensions
+        )
+
+    # Prefer the topic-specific folder; use general only when it has no tracks.
+    candidates = tracks_in(music_root / category)
+    if not candidates and category != "general":
+        candidates = tracks_in(music_root / "general")
     # Use title/narration as a stable selector: repeat topics use a consistent
     # soundtrack, while different topics naturally distribute across available tracks.
     if not candidates:
