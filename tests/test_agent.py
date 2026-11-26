@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from agent import make_slides, make_thumbnail, parse_gemini_json, validate_video_probe, vtt_to_srt, write_approximate_srt
+from agent import make_slides, make_thumbnail, parse_gemini_json, select_background_music, validate_video_probe, vtt_to_srt, write_approximate_srt
 from PIL import Image
 
 
@@ -100,6 +100,44 @@ class ThumbnailTests(unittest.TestCase):
                     self.assertEqual(result.format, "JPEG")
             finally:
                 thumb.unlink(missing_ok=True)
+
+
+class TopicMusicTests(unittest.TestCase):
+    def test_selects_music_folder_from_video_topic(self):
+        import agent
+        with TemporaryDirectory() as tmp:
+            old_root = agent.ROOT
+            agent.ROOT = Path(tmp)
+            try:
+                folder = Path(tmp) / "assets" / "music" / "krishna"
+                folder.mkdir(parents=True)
+                track = folder / "flute.mp3"
+                track.write_bytes(b"fake audio placeholder")
+                selected, category = select_background_music({
+                    "title": "भगवान श्रीकृष्ण की मुरली",
+                    "narration": "कान्हा की मधुर मुरली",
+                    "tags": ["कृष्ण"],
+                })
+                self.assertEqual(category, "krishna")
+                self.assertEqual(selected, track)
+            finally:
+                agent.ROOT = old_root
+
+    def test_returns_voice_only_when_no_licensed_track_is_present(self):
+        import agent
+        with TemporaryDirectory() as tmp:
+            old_root = agent.ROOT
+            agent.ROOT = Path(tmp)
+            try:
+                selected, category = select_background_music({
+                    "title": "भगवान शिव की कथा",
+                    "narration": "महादेव का संदेश",
+                    "tags": [],
+                })
+                self.assertIsNone(selected)
+                self.assertEqual(category, "shiva")
+            finally:
+                agent.ROOT = old_root
 
 
 class SceneAlignmentTests(unittest.TestCase):
