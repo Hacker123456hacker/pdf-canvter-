@@ -528,7 +528,46 @@ def tts(text,c):
         raise RuntimeError("Hindi narration failed: Edge TTS exhausted (" + str(reason) + "); gTTS fallback failed (" + type(exc).__name__ + ": " + str(exc) + ")") from exc
 
 
-def render(slides,audio,c,subtitles_path=None,video_clip=None):
+def select_background_music(data):
+    """Choose a licensed local instrumental track based on the generated video's topic."""
+    music_root = ROOT / "assets" / "music"
+    haystack = " ".join([
+        str(data.get("title", "")),
+        str(data.get("narration", "")),
+        " ".join(str(x) for x in data.get("tags", [])),
+    ]).lower()
+
+    topic_rules = [
+        ("hanuman", ["हनुमान", "बजरंगबली", "हनुमंत", "हनुमानजी", "hanuman", "bajrang"]),
+        ("krishna", ["कृष्ण", "कान्हा", "राधा", "मुरली", "गोवर्धन", "गीता", "krishna", "radha"]),
+        ("shiva", ["शिव", "महादेव", "भोलेनाथ", "शंकर", "महाकाल", "डमरू", "shiv", "mahadev"]),
+        ("ram", ["रामायण", "श्रीराम", "भगवान राम", "सीता", "अयोध्या", "ramayana", "shri ram"]),
+        ("devi", ["दुर्गा", "काली", "लक्ष्मी", "सरस्वती", "नवरात्रि", "देवी", "durga", "devi"]),
+        ("meditation", ["ध्यान", "प्रार्थना", "शांति", "मंत्र", "ॐ", "meditation", "prayer", "mantra"]),
+    ]
+    category = next((name for name, words in topic_rules if any(word in haystack for word in words)), "general")
+
+    extensions = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
+    candidates = sorted(
+        path for folder in (music_root / category, music_root / "general")
+        if folder.is_dir()
+        for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in extensions
+    )
+    # Use title/narration as a stable selector: repeat topics use a consistent
+    # soundtrack, while different topics naturally distribute across available tracks.
+    if not candidates:
+        print(f"No licensed background music found for '{category}' (or general); rendering voice only.")
+        return None, category
+    import hashlib
+    seed = (str(data.get("title", "")) + "|" + str(data.get("narration", ""))).encode("utf-8")
+    index = int(hashlib.sha256(seed).hexdigest()[:8], 16) % len(candidates)
+    selected = candidates[index]
+    print(f"Topic music selected: category={category}, track={selected.name}")
+    return selected, category
+
+
+def render(slides,audio,c,subtitles_path=None,video_clip=None,music_path=None):
     out=OUT/(datetime.now().strftime("%Y%m%d_%H%M%S")+".mp4")
     w=c["video"].get("width",1080); h=c["video"].get("height",1920); fps=c["video"].get("fps",30)
     audio_duration=media_duration(audio)
@@ -571,10 +610,25 @@ def render(slides,audio,c,subtitles_path=None,video_clip=None):
         "PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,"
         "BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=220'"
     )
-    cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
-         "-map","0:v:0","-map","1:a:0","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
-         "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
-         "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
+    if music_path and Path(music_path).is_file():
+        music_fade_out = max(0.0, audio_duration - 2.0)
+        audio_filter = (
+            "[1:a]volume=0.07,afade=t=in:st=0:d=1,"
+            f"afade=t=out:st={music_fade_out:.3f}:d=2[music];"
+            "[2:a]volume=1.0[voice];"
+            "[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+        )
+        cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),
+             "-stream_loop","-1","-i",str(music_path),"-i",str(audio),
+             "-filter_complex",audio_filter,"-map","0:v:0","-map","[aout]",
+             "-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
+             "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","160k",
+             "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
+    else:
+        cmd=["ffmpeg","-y","-f","concat","-safe","0","-i",str(listfile),"-i",str(audio),
+             "-map","0:v:0","-map","1:a:0","-vf",subtitle_filter,"-r",str(fps),"-c:v","libx264",
+             "-preset","ultrafast","-crf","21","-c:a","aac","-b:a","128k",
+             "-t",f"{audio_duration:.3f}","-movflags","+faststart",str(out)]
     result=subprocess.run(cmd,capture_output=True,text=True)
     if result.returncode:
         raise RuntimeError("FFmpeg subtitle/video render failed: "+result.stderr[-3500:])
@@ -632,7 +686,13 @@ def main():
     credits = []
     slides=make_slides(data["slides"],c,visual_paths)
     audio, subtitles=tts(data["narration"],c)
-    video=render(slides,audio,c,subtitles_path=subtitles)
+    music_path, music_category = select_background_music(data)
+    video=render(slides,audio,c,subtitles_path=subtitles,music_path=music_path)
+    data["background_music"] = {
+        "category": music_category,
+        "track": music_path.name if music_path else None,
+        "volume": 0.07 if music_path else 0,
+    }
     qc_report=verify_video_quality(video,c)
     thumbnail=make_thumbnail(data["title"], slides[0], c)
     data["thumbnail"]=str(thumbnail)
